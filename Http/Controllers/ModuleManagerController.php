@@ -78,6 +78,26 @@ class ModuleManagerController extends Controller
         return $this->extractAndRespond($zipPath);
     }
 
+    public function installFromUpload(Request $request)
+    {
+        $this->authorizeAdmin();
+
+        $request->validate([
+            'module_zip' => 'required|file|mimes:zip',
+        ]);
+
+        $storageDir = storage_path('app/modulemanager');
+        if (!File::isDirectory($storageDir)) {
+            File::makeDirectory($storageDir, 0775, true);
+        }
+
+        $uploaded = $request->file('module_zip');
+        $zipName = 'upload_'.bin2hex(random_bytes(6)).'.zip';
+        $uploaded->move($storageDir, $zipName);
+
+        return $this->extractAndRespond($storageDir.'/'.$zipName);
+    }
+
     private function extractAndRespond(string $zipPath)
     {
         $extractor = new ZipModuleExtractor(base_path('Modules'));

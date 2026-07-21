@@ -71,3 +71,14 @@
         </form>
     </div>
 </div>
+
+<div class="panel panel-default">
+    <div class="panel-heading">{{ __('Install from Uploaded ZIP') }}</div>
+    <div class="panel-body">
+        <form method="post" action="{{ route('modulemanager_install_upload') }}" enctype="multipart/form-data">
+            {{ csrf_field() }}
+            <input type="file" name="module_zip" accept=".zip" required>
+            <button type="submit" class="btn btn-primary">{{ __('Upload &amp; Install') }}</button>
+        </form>
+    </div>
+</div>
