@@ -23,6 +23,15 @@ class GithubRepoFetcherTest extends TestCase
         $this->assertSame('https://github.com/nielspeen/AiAssistant/archive/main.zip', $url);
     }
 
+    public function test_builds_the_zip_url_with_percent_encoded_owner_repo_and_ref(): void
+    {
+        $fetcher = new GithubRepoFetcher(new Client());
+
+        $url = $fetcher->buildZipUrl('some owner', 'some repo', 'a ref#1');
+
+        $this->assertSame('https://github.com/some%20owner/some%20repo/archive/a%20ref%231.zip', $url);
+    }
+
     public function test_download_writes_response_body_to_destination_on_success(): void
     {
         $destination = tempnam(sys_get_temp_dir(), 'grf_');

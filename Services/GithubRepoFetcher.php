@@ -17,9 +17,9 @@ class GithubRepoFetcher
 
     public function buildZipUrl(string $owner, string $repo, string $ref): string
     {
-        $owner = trim($owner, '/');
-        $repo = trim($repo, '/');
-        $ref = trim($ref, '/');
+        $owner = rawurlencode(trim($owner, '/'));
+        $repo = rawurlencode(trim($repo, '/'));
+        $ref = rawurlencode(trim($ref, '/'));
 
         return "https://github.com/{$owner}/{$repo}/archive/{$ref}.zip";
     }
