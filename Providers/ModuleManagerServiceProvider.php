@@ -3,6 +3,7 @@
 namespace Modules\ModuleManager\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Modules\ModuleManager\Services\DefaultRepoSeeder;
 use Modules\ModuleManager\Services\SavedRepoStore;
 use Modules\ModuleManager\Services\Support\LaravelOptionStore;
 
@@ -60,7 +61,15 @@ class ModuleManagerServiceProvider extends ServiceProvider
     protected function registerViewComposer()
     {
         \View::composer('modulemanager::settings.index', function ($view) {
-            $store = new SavedRepoStore(new LaravelOptionStore());
+            $options = new LaravelOptionStore();
+            $store = new SavedRepoStore($options);
+
+            $seeder = new DefaultRepoSeeder(
+                $store,
+                $options,
+                __DIR__.'/../Resources/default-repos.json'
+            );
+            $seeder->seedIfNeeded();
 
             $view->with('repos', $store->all());
         });
