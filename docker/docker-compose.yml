@@ -18,6 +18,11 @@ services:
       - ./freescout:/var/www/html
       - ../:/var/www/html/Modules/ModuleManager
     working_dir: /var/www/html
+    # The bind-mounted freescout/ and this repo are host-owned, not owned by the
+    # container's php-fpm user — without this, every real HTTP request 500s
+    # (found during Task 8's verification). Not appropriate for production; fine
+    # for a disposable local dev/test instance.
+    command: ["sh", "-c", "chmod -R 777 storage bootstrap/cache Modules && php-fpm"]
     depends_on:
       - db
 

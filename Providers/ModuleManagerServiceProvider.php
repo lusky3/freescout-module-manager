@@ -3,6 +3,8 @@
 namespace Modules\ModuleManager\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Modules\ModuleManager\Services\SavedRepoStore;
+use Modules\ModuleManager\Services\Support\LaravelOptionStore;
 
 class ModuleManagerServiceProvider extends ServiceProvider
 {
@@ -19,6 +21,12 @@ class ModuleManagerServiceProvider extends ServiceProvider
 
         $this->loadRoutesFrom(__DIR__.'/../Http/routes.php');
 
+        $this->registerSettingsSection();
+        $this->registerViewComposer();
+    }
+
+    protected function registerSettingsSection()
+    {
         \Eventy::addFilter('settings.sections', function ($sections) {
             $sections['modulemanager'] = [
                 'title' => __('Module Manager'),
@@ -39,5 +47,22 @@ class ModuleManagerServiceProvider extends ServiceProvider
 
             return $settings;
         }, 20, 2);
+
+        \Eventy::addFilter('settings.view', function ($view, $section) {
+            if ($section !== 'modulemanager') {
+                return $view;
+            }
+
+            return 'modulemanager::settings.index';
+        }, 20, 2);
+    }
+
+    protected function registerViewComposer()
+    {
+        \View::composer('modulemanager::settings.index', function ($view) {
+            $store = new SavedRepoStore(new LaravelOptionStore());
+
+            $view->with('repos', $store->all());
+        });
     }
 }

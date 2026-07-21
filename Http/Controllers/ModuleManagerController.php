@@ -17,17 +17,6 @@ use Modules\ModuleManager\Services\ZipModuleExtractor;
 
 class ModuleManagerController extends Controller
 {
-    public function settings()
-    {
-        $this->authorizeAdmin();
-
-        $store = new SavedRepoStore(new LaravelOptionStore());
-
-        return view('modulemanager::settings.index', [
-            'repos' => $store->all(),
-        ]);
-    }
-
     public function addRepo(Request $request)
     {
         $this->authorizeAdmin();

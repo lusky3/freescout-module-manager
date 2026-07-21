@@ -5,10 +5,6 @@ Route::group([
     'prefix' => \Helper::getSubdirectory(),
     'namespace' => 'Modules\\ModuleManager\\Http\\Controllers',
 ], function () {
-    Route::get('/app-settings/modulemanager', [
-        'uses' => 'ModuleManagerController@settings',
-    ])->name('modulemanager_settings');
-
     Route::post('/app-settings/modulemanager/repos', [
         'uses' => 'ModuleManagerController@addRepo',
     ])->name('modulemanager_add_repo');
