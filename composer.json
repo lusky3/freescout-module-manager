@@ -1,0 +1,23 @@
+{
+    "name": "freescout-module-manager/module-manager",
+    "description": "Install FreeScout modules from a GitHub repository or an uploaded ZIP file.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^7.4",
+        "guzzlehttp/guzzle": "^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\ModuleManager\\": ""
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "Tests/"
+        }
+    }
+}
