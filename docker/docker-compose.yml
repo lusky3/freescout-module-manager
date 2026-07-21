@@ -1,3 +1,17 @@
+# ⚠️  LOCAL DEVELOPMENT / TESTING ONLY — DO NOT USE FOR STAGING OR PRODUCTION ⚠️
+#
+# This compose file exists solely to run FreeScout + this module on a
+# developer's own machine for manual testing. It intentionally uses:
+#   - Hardcoded, weak database credentials (freescout/freescout).
+#   - A world-writable `chmod -R 777` on container startup (see the `app`
+#     service's `command` below) to work around host/container UID mismatches.
+#   - Ports bound to 127.0.0.1 only, but with no TLS and no auth hardening
+#     beyond that.
+# None of this is acceptable outside a throwaway local environment. Do not
+# copy this file as a starting point for a staging or production deployment —
+# build a proper compose/orchestration config with secrets management, TLS,
+# least-privilege file permissions, and non-default credentials instead.
+
 services:
   db:
     image: mysql:8.0
@@ -9,7 +23,7 @@ services:
     volumes:
       - db_data:/var/lib/mysql
     ports:
-      - "33061:3306"
+      - "127.0.0.1:33061:3306"
 
   app:
     build:
@@ -41,7 +55,7 @@ services:
       - ./freescout:/var/www/html
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       - app
 
