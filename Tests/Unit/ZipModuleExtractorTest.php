@@ -41,6 +41,21 @@ class ZipModuleExtractorTest extends TestCase
         $this->assertFileExists($this->modulesDir.'/themes/Providers/ThemesServiceProvider.php');
     }
 
+    public function test_extraction_does_not_leave_a_staging_directory_behind(): void
+    {
+        $zipPath = $this->buildZip([
+            'themes/module.json' => json_encode(['name' => 'Themes', 'alias' => 'themes']),
+        ]);
+
+        $extractor = new ZipModuleExtractor($this->modulesDir);
+        $result = $extractor->extract($zipPath);
+
+        $this->assertTrue($result->success);
+
+        $leftovers = glob($this->modulesDir.'/.staging-*');
+        $this->assertSame([], $leftovers, 'No .staging-* directory should remain after a successful extract.');
+    }
+
     public function test_rejects_zip_with_path_traversal_entry(): void
     {
         $zipPath = $this->buildZip([
@@ -54,6 +69,77 @@ class ZipModuleExtractorTest extends TestCase
         $this->assertFalse($result->success);
         $this->assertStringContainsString('Unsafe path', $result->error);
         $this->assertFileDoesNotExist($this->workDir.'/evil.php');
+    }
+
+    /**
+     * The leading-slash branch of isUnsafePath() is reachable via a real ZIP
+     * built with ZipArchive::addFromString(): empirically (verified against
+     * this project's PHP 7.4 / libzip 1.7.3), a leading '/' in an entry name
+     * is preserved verbatim on write and on re-read, it is NOT stripped by
+     * libzip. So this test exercises the real "leading slash" code path
+     * rather than a synthetic one.
+     */
+    public function test_rejects_zip_with_leading_slash_entry(): void
+    {
+        $zipPath = $this->buildZip([
+            'themes/module.json' => json_encode(['name' => 'Themes', 'alias' => 'themes']),
+            '/etc/passwd' => 'evil',
+        ]);
+
+        $extractor = new ZipModuleExtractor($this->modulesDir);
+        $result = $extractor->extract($zipPath);
+
+        $this->assertFalse($result->success);
+        $this->assertStringContainsString('Unsafe path', $result->error);
+        $this->assertStringContainsString('/etc/passwd', $result->error);
+        $this->assertFileDoesNotExist($this->modulesDir.'/themes');
+        $this->assertFileDoesNotExist($this->modulesDir.'/etc');
+    }
+
+    public function test_rejects_zip_with_backslash_entry(): void
+    {
+        $zipPath = $this->buildZip([
+            'themes/module.json' => json_encode(['name' => 'Themes', 'alias' => 'themes']),
+            'themes/evil\\..\\..\\evil.php' => '<?php echo "pwned"; ?>',
+        ]);
+
+        $extractor = new ZipModuleExtractor($this->modulesDir);
+        $result = $extractor->extract($zipPath);
+
+        $this->assertFalse($result->success);
+        $this->assertStringContainsString('Unsafe path', $result->error);
+        $this->assertFileDoesNotExist($this->workDir.'/evil.php');
+    }
+
+    /**
+     * PHP's ZipArchive has no direct "add a symlink" API. To exercise the
+     * real code path that inspects Unix external file attributes, this
+     * fakes the Unix symlink mode bits (S_IFLNK == 0120000) on a regular
+     * entry via ZipArchive::setExternalAttributesName(), then closes and
+     * reopens the archive so the extractor reads the attributes back from
+     * the ZIP's central directory exactly as it would for a real symlink
+     * entry produced by another zip tool.
+     */
+    public function test_rejects_zip_with_a_symlink_entry(): void
+    {
+        $zipPath = $this->workDir.'/fixture_symlink.zip';
+        $zip = new \ZipArchive();
+        $zip->open($zipPath, \ZipArchive::CREATE);
+        $zip->addFromString('themes/module.json', json_encode(['name' => 'Themes', 'alias' => 'themes']));
+        $zip->addFromString('themes/evil-link', '/etc');
+        // S_IFLNK (0120000) | 0777 permissions, shifted into the high 16
+        // bits the way Unix-produced ZIPs store external file attributes.
+        $mode = 0120777;
+        $zip->setExternalAttributesName('themes/evil-link', \ZipArchive::OPSYS_UNIX, $mode << 16);
+        $zip->close();
+
+        $extractor = new ZipModuleExtractor($this->modulesDir);
+        $result = $extractor->extract($zipPath);
+
+        $this->assertFalse($result->success);
+        $this->assertStringContainsString('symlink', $result->error);
+        $this->assertStringContainsString('evil-link', $result->error);
+        $this->assertFileDoesNotExist($this->modulesDir.'/themes');
     }
 
     public function test_rejects_zip_without_module_json(): void

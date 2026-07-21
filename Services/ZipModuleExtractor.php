@@ -33,6 +33,12 @@ class ZipModuleExtractor
             return InstallResult::fail("Unsafe path in ZIP entry: {$traversalEntry}");
         }
 
+        $symlinkEntry = $this->findSymlinkEntry($zip);
+        if ($symlinkEntry !== null) {
+            $zip->close();
+            return InstallResult::fail("Unsafe ZIP entry: '{$symlinkEntry}' is a symlink, which is not allowed.");
+        }
+
         $moduleInfo = $this->readModuleJson($zip, $topFolder);
         if ($moduleInfo === null) {
             $zip->close();
@@ -45,12 +51,37 @@ class ZipModuleExtractor
             return InstallResult::fail("A module folder named '{$topFolder}' already exists.");
         }
 
-        if (!$zip->extractTo($this->modulesDir)) {
+        $stagingDir = $this->modulesDir.'/.staging-'.bin2hex(random_bytes(8));
+        if (!mkdir($stagingDir, 0777, true)) {
             $zip->close();
+            return InstallResult::fail('Could not create a staging directory for extraction.');
+        }
+
+        $extracted = $zip->extractTo($stagingDir);
+        $zip->close();
+
+        if (!$extracted) {
+            $this->removeDirectory($stagingDir);
             return InstallResult::fail('Could not extract ZIP archive.');
         }
 
-        $zip->close();
+        $stagedModuleDir = $stagingDir.'/'.$topFolder;
+        if (!is_dir($stagedModuleDir)) {
+            $this->removeDirectory($stagingDir);
+            return InstallResult::fail('Could not extract ZIP archive.');
+        }
+
+        // Atomically move the extracted module folder into place. rename() on
+        // the same filesystem is atomic and fails if a same-named directory
+        // is concurrently created at the destination first, turning a race
+        // between two simultaneous installs into a clean failure instead of
+        // silently corrupting either module folder.
+        if (!@rename($stagedModuleDir, $destination)) {
+            $this->removeDirectory($stagingDir);
+            return InstallResult::fail("A module folder named '{$topFolder}' already exists.");
+        }
+
+        $this->removeDirectory($stagingDir);
 
         return InstallResult::ok($moduleInfo['alias'], $moduleInfo['name']);
     }
@@ -111,6 +142,43 @@ class ZipModuleExtractor
         return false;
     }
 
+    /**
+     * Detects ZIP entries that carry a Unix "symlink" file-type mode in
+     * their external file attributes. ZipArchive::extractTo() extracts
+     * entries by name, but a name that passes the traversal checks can
+     * still be paired with symlink attributes; if that symlink were ever
+     * materialized on disk (directly by extraction, or by a different
+     * unzip implementation reading this same archive) and pointed outside
+     * modulesDir, a later entry written "through" it could escape the
+     * intended destination even though every entry NAME was safe. Reject
+     * any such entry outright.
+     */
+    private function findSymlinkEntry(\ZipArchive $zip): ?string
+    {
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $opsys = 0;
+            $attr = 0;
+
+            if (!$zip->getExternalAttributesIndex($i, $opsys, $attr)) {
+                continue;
+            }
+
+            if ($opsys !== \ZipArchive::OPSYS_UNIX) {
+                continue;
+            }
+
+            $mode = ($attr >> 16) & 0xFFFF;
+            $fileType = $mode & 0170000;
+
+            if ($fileType === 0120000) {
+                $name = $zip->getNameIndex($i);
+                return $name !== false ? $name : "entry #{$i}";
+            }
+        }
+
+        return null;
+    }
+
     private function readModuleJson(\ZipArchive $zip, string $topFolder): ?array
     {
         $contents = $zip->getFromName($topFolder.'/module.json');
@@ -127,5 +195,27 @@ class ZipModuleExtractor
             'name' => (string) $data['name'],
             'alias' => (string) $data['alias'],
         ];
+    }
+
+    private function removeDirectory(string $dir): void
+    {
+        if (!is_dir($dir) || is_link($dir)) {
+            return;
+        }
+
+        $items = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($items as $item) {
+            if ($item->isDir() && !$item->isLink()) {
+                @rmdir($item->getPathname());
+            } else {
+                @unlink($item->getPathname());
+            }
+        }
+
+        @rmdir($dir);
     }
 }
