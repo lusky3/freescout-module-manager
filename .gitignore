@@ -1,0 +1,4 @@
+/vendor
+/docker/freescout
+.phpunit.cache
+*.log
