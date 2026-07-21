@@ -5,5 +5,23 @@ Route::group([
     'prefix' => \Helper::getSubdirectory(),
     'namespace' => 'Modules\\ModuleManager\\Http\\Controllers',
 ], function () {
-    // Routes added in Task 8 and Task 9.
+    Route::get('/app-settings/modulemanager', [
+        'uses' => 'ModuleManagerController@settings',
+    ])->name('modulemanager_settings');
+
+    Route::post('/app-settings/modulemanager/repos', [
+        'uses' => 'ModuleManagerController@addRepo',
+    ])->name('modulemanager_add_repo');
+
+    Route::delete('/app-settings/modulemanager/repos/{id}', [
+        'uses' => 'ModuleManagerController@removeRepo',
+    ])->name('modulemanager_remove_repo')->where('id', '[0-9a-f]+');
+
+    Route::post('/app-settings/modulemanager/repos/{id}/install', [
+        'uses' => 'ModuleManagerController@installFromRepo',
+    ])->name('modulemanager_install_repo')->where('id', '[0-9a-f]+');
+
+    Route::post('/app-settings/modulemanager/upload', [
+        'uses' => 'ModuleManagerController@installFromUpload',
+    ])->name('modulemanager_install_upload');
 });
