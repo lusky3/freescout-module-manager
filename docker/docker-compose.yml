@@ -17,6 +17,15 @@ services:
     volumes:
       - ./freescout:/var/www/html
       - ../:/var/www/html/Modules/ModuleManager
+      # This module's own repo (mounted above) contains docker/freescout — the
+      # very same host directory already mounted at /var/www/html. Without this
+      # line, that's a literal bind-mount cycle: Modules/ModuleManager/docker/
+      # freescout resolves back to /var/www/html, and any recursive operation
+      # over Modules/ (like the chmod below) hits GNU chmod's circular-directory
+      # guard and exits 1. An empty named volume shadows just that one subpath
+      # inside the container, breaking the cycle without affecting anything the
+      # module's own PHP code reads or writes at runtime.
+      - module_repo_docker_dir_excluded:/var/www/html/Modules/ModuleManager/docker
     working_dir: /var/www/html
     # The bind-mounted freescout/ and this repo are host-owned, not owned by the
     # container's php-fpm user — without this, every real HTTP request 500s
@@ -38,3 +47,4 @@ services:
 
 volumes:
   db_data:
+  module_repo_docker_dir_excluded:
