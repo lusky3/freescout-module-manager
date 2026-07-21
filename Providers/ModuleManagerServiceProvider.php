@@ -2,16 +2,32 @@
 
 namespace Modules\ModuleManager\Providers;
 
+use GuzzleHttp\Client;
 use Illuminate\Support\ServiceProvider;
 use Modules\ModuleManager\Services\DefaultRepoSeeder;
+use Modules\ModuleManager\Services\GithubRepoFetcher;
 use Modules\ModuleManager\Services\SavedRepoStore;
 use Modules\ModuleManager\Services\Support\LaravelOptionStore;
+use Modules\ModuleManager\Services\Support\OptionStoreInterface;
+use Modules\ModuleManager\Services\ZipModuleExtractor;
 
 class ModuleManagerServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        $this->mergeConfigFrom(__DIR__.'/../Config/config.php', 'modulemanager');
+        $this->app->bind(OptionStoreInterface::class, LaravelOptionStore::class);
+
+        $this->app->bind(SavedRepoStore::class, function ($app) {
+            return new SavedRepoStore($app->make(OptionStoreInterface::class));
+        });
+
+        $this->app->bind(GithubRepoFetcher::class, function () {
+            return new GithubRepoFetcher(new Client());
+        });
+
+        $this->app->bind(ZipModuleExtractor::class, function () {
+            return new ZipModuleExtractor(base_path('Modules'));
+        });
     }
 
     public function boot()
@@ -39,6 +55,13 @@ class ModuleManagerServiceProvider extends ServiceProvider
             return $sections;
         });
 
+        // Ensure settings are not empty so the core controller does not
+        // abort: FreeScout's SettingsController@view 404s when the
+        // 'settings.section_settings' filter returns an empty array for the
+        // section. Our own custom view (modulemanager::settings.index) never
+        // reads this value directly, which makes it *look* like dead code,
+        // but removing it breaks GET /app-settings/modulemanager (verified:
+        // returns a 404 instead of 200 once this filter is removed).
         \Eventy::addFilter('settings.section_settings', function ($settings, $section) {
             if ($section !== 'modulemanager') {
                 return $settings;

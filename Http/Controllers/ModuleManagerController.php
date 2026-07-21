@@ -2,7 +2,6 @@
 
 namespace Modules\ModuleManager\Http\Controllers;
 
-use GuzzleHttp\Client;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Artisan;
@@ -12,11 +11,27 @@ use Illuminate\Support\Facades\Log;
 use Modules\ModuleManager\Services\Exceptions\GithubDownloadException;
 use Modules\ModuleManager\Services\GithubRepoFetcher;
 use Modules\ModuleManager\Services\SavedRepoStore;
-use Modules\ModuleManager\Services\Support\LaravelOptionStore;
 use Modules\ModuleManager\Services\ZipModuleExtractor;
+use Symfony\Component\HttpFoundation\File\Exception\FileException;
 
 class ModuleManagerController extends Controller
 {
+    /** Maximum accepted upload size for a module ZIP, in kilobytes (50MB). Bump here if larger modules are legitimate. */
+    private const MAX_UPLOAD_KB = 51200;
+
+    private SavedRepoStore $repoStore;
+
+    private GithubRepoFetcher $githubFetcher;
+
+    private ZipModuleExtractor $extractor;
+
+    public function __construct(SavedRepoStore $repoStore, GithubRepoFetcher $githubFetcher, ZipModuleExtractor $extractor)
+    {
+        $this->repoStore = $repoStore;
+        $this->githubFetcher = $githubFetcher;
+        $this->extractor = $extractor;
+    }
+
     public function addRepo(Request $request)
     {
         $this->authorizeAdmin();
@@ -28,8 +43,7 @@ class ModuleManagerController extends Controller
             'label' => 'required|string|max:150',
         ]);
 
-        $store = new SavedRepoStore(new LaravelOptionStore());
-        $store->add(
+        $this->repoStore->add(
             $request->input('owner'),
             $request->input('repo'),
             $request->input('ref'),
@@ -43,8 +57,7 @@ class ModuleManagerController extends Controller
     {
         $this->authorizeAdmin();
 
-        $store = new SavedRepoStore(new LaravelOptionStore());
-        $store->remove($id);
+        $this->repoStore->remove($id);
 
         return redirect()->back()->with('success', __('Repository removed.'));
     }
@@ -53,24 +66,19 @@ class ModuleManagerController extends Controller
     {
         $this->authorizeAdmin();
 
-        $store = new SavedRepoStore(new LaravelOptionStore());
-        $entry = $store->find($id);
+        $entry = $this->repoStore->find($id);
 
         if (!$entry) {
             return redirect()->back()->withErrors(['repo' => __('Saved repository not found.')]);
         }
 
-        $storageDir = storage_path('app/modulemanager');
-        if (!File::isDirectory($storageDir)) {
-            File::makeDirectory($storageDir, 0775, true);
-        }
+        $storageDir = $this->ensureStorageDir();
         $zipPath = $storageDir.'/'.$entry['id'].'.zip';
 
-        $fetcher = new GithubRepoFetcher(new Client());
-
         try {
-            $fetcher->download($entry['owner'], $entry['repo'], $entry['ref'], $zipPath);
+            $this->githubFetcher->download($entry['owner'], $entry['repo'], $entry['ref'], $zipPath);
         } catch (GithubDownloadException $e) {
+            @unlink($zipPath);
             Log::warning('ModuleManager GitHub download failed: '.$e->getMessage());
             return redirect()->back()->withErrors(['repo' => $e->getMessage()]);
         }
@@ -83,25 +91,28 @@ class ModuleManagerController extends Controller
         $this->authorizeAdmin();
 
         $request->validate([
-            'module_zip' => 'required|file|mimes:zip',
+            // 'max' for file rules is in kilobytes; 51200 KB = 50MB. Adjust MAX_UPLOAD_KB above if this needs to change.
+            'module_zip' => 'required|file|mimes:zip|max:'.self::MAX_UPLOAD_KB,
         ]);
 
-        $storageDir = storage_path('app/modulemanager');
-        if (!File::isDirectory($storageDir)) {
-            File::makeDirectory($storageDir, 0775, true);
-        }
+        $storageDir = $this->ensureStorageDir();
 
         $uploaded = $request->file('module_zip');
         $zipName = 'upload_'.bin2hex(random_bytes(6)).'.zip';
-        $uploaded->move($storageDir, $zipName);
+
+        try {
+            $uploaded->move($storageDir, $zipName);
+        } catch (FileException $e) {
+            Log::warning('ModuleManager upload move failed: '.$e->getMessage());
+            return redirect()->back()->withErrors(['module_zip' => __('Could not save the uploaded file.')]);
+        }
 
         return $this->extractAndRespond($storageDir.'/'.$zipName);
     }
 
     private function extractAndRespond(string $zipPath)
     {
-        $extractor = new ZipModuleExtractor(base_path('Modules'));
-        $result = $extractor->extract($zipPath);
+        $result = $this->extractor->extract($zipPath);
 
         @unlink($zipPath);
 
@@ -116,6 +127,19 @@ class ModuleManagerController extends Controller
         return redirect()->back()
             ->with('success', __('Installed module: :name', ['name' => $result->name]))
             ->with('warning', __('Please enable the module from the Modules page.'));
+    }
+
+    private function ensureStorageDir(): string
+    {
+        $storageDir = storage_path('app/modulemanager');
+
+        if (!File::isDirectory($storageDir)) {
+            if (!File::makeDirectory($storageDir, 0775, true) && !File::isDirectory($storageDir)) {
+                throw new \RuntimeException("Could not create storage directory: {$storageDir}");
+            }
+        }
+
+        return $storageDir;
     }
 
     private function clearCaches(): void
