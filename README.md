@@ -6,6 +6,31 @@ Install FreeScout modules from a GitHub repository or an uploaded ZIP file — n
 
 This is a from-scratch, MIT-licensed implementation. It is not a fork of, and has no code in common with, the AGPL-3.0-licensed `FreescoutInstaller` module from freescout-modules.com. That module funneled every install through a third-party Cloudflare Worker (catalog, trial tracking, and the download itself) and had no protection against Zip-Slip path traversal during extraction. This module makes neither mistake: the only network calls it ever makes are to the exact `github.com/{owner}/{repo}/archive/{ref}.zip` URL for a repository you explicitly added, and every ZIP — from GitHub or uploaded — is validated for path traversal and a well-formed `module.json` before a single file is written.
 
+## Requirements
+
+PHP 8.2+ is the target/recommended version, matching FreeScout's own current
+guidance (FreeScout's
+[Installation Guide](https://github.com/freescout-help-desk/freescout/wiki/Installation-Guide)
+and [Upgrade-PHP](https://github.com/freescout-help-desk/freescout/wiki/Upgrade-PHP)
+wiki pages explicitly warn against PHP 8.1 and recommend 8.2 or newer). PHP
+7.4 also works — this module's code is written in conservative,
+7.4-compatible style, and `composer.json`'s `"php"` constraint
+(`^7.4|^8.0`) accepts either. Both versions are exercised in CI (see
+`.github/workflows/tests.yml`) and were verified end-to-end (unit suite +
+live HTTP flows against a real FreeScout instance) against this module.
+
+When running `composer install`/`update` against FreeScout core itself
+(not this module), always add `--ignore-platform-reqs` — FreeScout core's
+own committed `composer.lock` is otherwise picked apart by an unrelated
+`rap2hpoutre/laravel-log-viewer` packaging bug (a missing `src/controllers`
+directory in that package's distributed archive) that surfaces as a
+classmap-generation error regardless of PHP version or the
+`--ignore-platform-reqs` flag. In practice this means core's own
+`composer install` cannot complete on any PHP version; FreeScout core is
+designed to run from its pre-committed `vendor/` directory for exactly
+this kind of shared-hosting-style deployment, and that pre-committed
+`vendor/` boots and runs correctly under both PHP 7.4 and PHP 8.2.
+
 ## Installing into FreeScout
 
 1. Clone this repo into `Modules/ModuleManager` inside your FreeScout installation.

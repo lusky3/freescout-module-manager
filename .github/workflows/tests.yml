@@ -7,17 +7,27 @@ on:
 
 jobs:
   unit-tests:
-    name: Unit tests (PHP 7.4)
+    name: Unit tests (PHP ${{ matrix.php-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 8.2 is FreeScout's own recommended/target PHP version (see
+        # https://github.com/freescout-help-desk/freescout/wiki/Installation-Guide
+        # -- FreeScout explicitly warns against 8.1, and recommends 8.2+).
+        # 7.4 is kept here because this module's code is written in
+        # conservative 7.4-compatible style and composer.json's "php"
+        # constraint (^7.4|^8.0) still supports it.
+        php-version: ['7.4', '8.2']
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up PHP 7.4
+      - name: Set up PHP ${{ matrix.php-version }}
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '7.4'
+          php-version: ${{ matrix.php-version }}
           extensions: zip
           coverage: none
 
