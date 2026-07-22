@@ -2,9 +2,9 @@
 
 Installs FreeScout modules from a GitHub repo or an uploaded ZIP. No telemetry, no phone-home license checks, no third-party backend in the middle.
 
-## Why this exists
+## How it stays safe
 
-FreescoutInstaller, the module this replaces, routed every install through a Cloudflare Worker it didn't control, and never checked ZIP entries for path traversal before extracting them. This is a clean rewrite, not a fork: no shared code, no AGPL-3.0 carried over, MIT instead. The only network call this module makes is a GET to `github.com/{owner}/{repo}/archive/{ref}.zip`, for a repo you added yourself. It checks every ZIP, whether it came from GitHub or an upload, for path traversal and a valid `module.json` before writing anything to disk.
+The only network call this module makes is a GET to `github.com/{owner}/{repo}/archive/{ref}.zip`, for a repo you added yourself — nothing routes through a server this project doesn't control. Every ZIP, whether it came from GitHub or a direct upload, gets checked for path traversal and a valid `module.json` before a single file is written to disk. MIT licensed.
 
 ## Requirements
 
