@@ -1,94 +1,55 @@
 # FreeScout Module Manager
 
-Install FreeScout modules from a GitHub repository or an uploaded ZIP file — no telemetry, no license/trial gating, no third-party backend.
+Installs FreeScout modules from a GitHub repo or an uploaded ZIP. No telemetry, no phone-home license checks, no third-party backend in the middle.
 
-## What this is not
+## Why this exists
 
-This is a from-scratch, MIT-licensed implementation. It is not a fork of, and has no code in common with, the AGPL-3.0-licensed `FreescoutInstaller` module from freescout-modules.com. That module funneled every install through a third-party Cloudflare Worker (catalog, trial tracking, and the download itself) and had no protection against Zip-Slip path traversal during extraction. This module makes neither mistake: the only network calls it ever makes are to the exact `github.com/{owner}/{repo}/archive/{ref}.zip` URL for a repository you explicitly added, and every ZIP — from GitHub or uploaded — is validated for path traversal and a well-formed `module.json` before a single file is written.
+FreescoutInstaller, the module this replaces, routed every install through a Cloudflare Worker it didn't control, and never checked ZIP entries for path traversal before extracting them. This is a clean rewrite, not a fork: no shared code, no AGPL-3.0 carried over, MIT instead. The only network call this module makes is a GET to `github.com/{owner}/{repo}/archive/{ref}.zip`, for a repo you added yourself. It checks every ZIP, whether it came from GitHub or an upload, for path traversal and a valid `module.json` before writing anything to disk.
 
 ## Requirements
 
-PHP 8.2+ is the target/recommended version, matching FreeScout's own current
-guidance (FreeScout's
-[Installation Guide](https://github.com/freescout-help-desk/freescout/wiki/Installation-Guide)
-and [Upgrade-PHP](https://github.com/freescout-help-desk/freescout/wiki/Upgrade-PHP)
-wiki pages explicitly warn against PHP 8.1 and recommend 8.2 or newer). PHP
-7.4 also works — this module's code is written in conservative,
-7.4-compatible style, and `composer.json`'s `"php"` constraint
-(`^7.4|^8.0`) accepts either. Both versions are exercised in CI (see
-`.github/workflows/tests.yml`) and were verified end-to-end (unit suite +
-live HTTP flows against a real FreeScout instance) against this module.
+PHP 8.2+. FreeScout's own docs warn against 8.1 specifically and recommend 8.2 or newer, so that's the target here too. PHP 7.4 also works, since the code is deliberately written to that older syntax; both versions run in CI.
 
-When running `composer install`/`update` against FreeScout core itself
-(not this module), always add `--ignore-platform-reqs` — FreeScout core's
-own committed `composer.lock` is otherwise picked apart by an unrelated
-`rap2hpoutre/laravel-log-viewer` packaging bug (a missing `src/controllers`
-directory in that package's distributed archive) that surfaces as a
-classmap-generation error regardless of PHP version or the
-`--ignore-platform-reqs` flag. In practice this means core's own
-`composer install` cannot complete on any PHP version; FreeScout core is
-designed to run from its pre-committed `vendor/` directory for exactly
-this kind of shared-hosting-style deployment, and that pre-committed
-`vendor/` boots and runs correctly under both PHP 7.4 and PHP 8.2.
+One gotcha that has nothing to do with this module: if you're setting up FreeScout core itself, always run `composer install --ignore-platform-reqs`. Skip the flag and composer chokes on version constraints nobody actually needs enforced. Even with the flag, core's own `composer install` still fails — an unrelated packaging bug in `rap2hpoutre/laravel-log-viewer` ships an archive missing the `src/controllers` directory its own `composer.json` points at. FreeScout ships a pre-built `vendor/` for exactly this reason, so most real installs never run `composer install` on core at all. That pre-built vendor boots fine under both 7.4 and 8.2.
 
-## Installing into FreeScout
+## Installing it
 
-1. Clone this repo into `Modules/ModuleManager` inside your FreeScout installation.
-2. `php artisan module:enable "FreeScout Module Manager"` (nwidart-modules in this FreeScout version resolves by the `name` field in module.json, not the folder/alias — verified during Task 7 execution)
-3. Visit **Settings → Module Manager**.
+Clone this repo into `Modules/ModuleManager` inside your FreeScout install, then run:
+
+```bash
+php artisan module:enable "FreeScout Module Manager"
+```
+
+Enable by name, not folder — that's how nwidart-modules resolves it here. Then go to Settings → Module Manager.
 
 ## Using it
 
-- **From GitHub:** add an owner/repo/branch-or-tag under "Add a Repository", then click **Install** on the saved row.
-- **From a ZIP file:** use the "Install from Uploaded ZIP" form.
-- Either way, the module is extracted into `Modules/<alias>` — you still need to enable it from FreeScout's own Modules page afterward.
+Add an owner, repo, and branch or tag under "Add a Repository," then hit Install on that row. Or skip GitHub entirely and upload a ZIP directly. Either way the module lands in `Modules/<alias>`, and you still need to enable it from FreeScout's own Modules page afterward.
 
-`Resources/default-repos.json` ships with exactly one example entry (`nielspeen/AiAssistant`) as a template. Review it, and any repo you add, before installing — this tool does not vet third-party code for you.
+`Resources/default-repos.json` ships with one entry, `nielspeen/AiAssistant`, as an example — look at it before installing, and look at anything else you add too. This tool checks that a ZIP is safe to extract. It doesn't check whether the code inside it is safe to run.
 
 ## Development
 
-Unit tests (no FreeScout instance required):
+Unit tests don't need a FreeScout instance:
+
 ```bash
 composer install
 vendor/bin/phpunit --coverage-text
 ```
 
-Local FreeScout instance for integration testing:
+For integration testing against a real instance:
+
 ```bash
 ./scripts/setup-dev-env.sh
 # then visit http://localhost:8080/install
 ```
 
-### Why there's no automated Feature-test suite
+There's no Feature-test suite, on purpose. `composer.json` has no Laravel or Testbench dependency, which is the whole reason the unit suite runs in a couple seconds with zero setup. What's actually worth testing at the controller level is tied to FreeScout itself — the admin check calls `Auth::user()->isAdmin()` on FreeScout's own User model, and the settings page only renders because the service provider hooks into FreeScout's `Eventy` filters. None of that exists in a generic Testbench app, so a Feature test built on one would mostly test a stand-in for FreeScout instead of FreeScout. Admin-gating and the full request flow get checked by hand against the real Docker environment above.
 
-This module has no `Tests/Feature` directory, and `phpunit.xml` only defines a
-`Unit` testsuite. That's a deliberate scope boundary, not an oversight.
+## Security
 
-`composer.json` intentionally has no `laravel/framework` or
-`orchestra/testbench` dependency: this module unit-tests its own services in
-isolation, without a Laravel bootstrap, so `composer install && vendor/bin/phpunit`
-runs in seconds with no database and no FreeScout checkout required. Pulling
-in a generic Testbench skeleton to exercise `ModuleManagerController` and its
-routes wouldn't actually cover much, because the things worth testing there
-are FreeScout-specific: the controller's admin gate calls
-`Auth::user()->isAdmin()` on FreeScout's own `User` model, and the settings
-page it renders only exists because `ModuleManagerServiceProvider` hooks
-FreeScout's `\Eventy` filters (`settings.sections`, `settings.section_settings`,
-`settings.view`) that FreeScout core's `SettingsController@view` reads. None
-of that exists in a stock Testbench app, so a "Feature test" built on one
-would mostly exercise scaffolding written to imitate FreeScout, not FreeScout
-itself.
-
-Instead, admin-authorization behavior (guests/non-admins are redirected away
-from `/app-settings/modulemanager` and can't add or install repos) and the
-full request flow through the real settings page are verified manually
-against the Docker dev environment above, using a real FreeScout install with
-real session/auth middleware and the real `\Eventy` filter pipeline. If that
-manual check is ever automated, it belongs in a test run against a full
-FreeScout-core checkout (mirroring how a local, gitignored FreeScout
-`phpunit.xml` can add its own testsuite pointing at this module's tests), not
-in this repo's standalone `composer install` workflow.
+See `SECURITY.md` for how to report a vulnerability.
 
 ## License
 
-MIT — see `LICENSE`.
+MIT. See `LICENSE`.
