@@ -34,6 +34,36 @@ Local FreeScout instance for integration testing:
 # then visit http://localhost:8080/install
 ```
 
+### Why there's no automated Feature-test suite
+
+This module has no `Tests/Feature` directory, and `phpunit.xml` only defines a
+`Unit` testsuite. That's a deliberate scope boundary, not an oversight.
+
+`composer.json` intentionally has no `laravel/framework` or
+`orchestra/testbench` dependency: this module unit-tests its own services in
+isolation, without a Laravel bootstrap, so `composer install && vendor/bin/phpunit`
+runs in seconds with no database and no FreeScout checkout required. Pulling
+in a generic Testbench skeleton to exercise `ModuleManagerController` and its
+routes wouldn't actually cover much, because the things worth testing there
+are FreeScout-specific: the controller's admin gate calls
+`Auth::user()->isAdmin()` on FreeScout's own `User` model, and the settings
+page it renders only exists because `ModuleManagerServiceProvider` hooks
+FreeScout's `\Eventy` filters (`settings.sections`, `settings.section_settings`,
+`settings.view`) that FreeScout core's `SettingsController@view` reads. None
+of that exists in a stock Testbench app, so a "Feature test" built on one
+would mostly exercise scaffolding written to imitate FreeScout, not FreeScout
+itself.
+
+Instead, admin-authorization behavior (guests/non-admins are redirected away
+from `/app-settings/modulemanager` and can't add or install repos) and the
+full request flow through the real settings page are verified manually
+against the Docker dev environment above, using a real FreeScout install with
+real session/auth middleware and the real `\Eventy` filter pipeline. If that
+manual check is ever automated, it belongs in a test run against a full
+FreeScout-core checkout (mirroring how a local, gitignored FreeScout
+`phpunit.xml` can add its own testsuite pointing at this module's tests), not
+in this repo's standalone `composer install` workflow.
+
 ## License
 
 MIT — see `LICENSE`.

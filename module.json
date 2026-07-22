@@ -4,7 +4,7 @@
     "description": "Install FreeScout modules from a GitHub repository or an uploaded ZIP file.",
     "version": "1.0.0",
     "license": "MIT",
-    "author": "Your Name",
+    "author": "FreeScout Module Manager contributors",
     "providers": [
         "Modules\\ModuleManager\\Providers\\ModuleManagerServiceProvider"
     ]
