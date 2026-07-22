@@ -166,6 +166,36 @@ class ZipModuleExtractorTest extends TestCase
         $this->assertFileDoesNotExist($this->modulesDir.'/themes');
     }
 
+    /**
+     * Proves the zip-bomb ceiling actually blocks extraction, without the
+     * test itself having to generate and compress hundreds of megabytes of
+     * real data (which would also blow well past PHPUnit's memory_limit).
+     * Instead this builds a normal small ZIP and then patches the 4-byte
+     * little-endian "uncompressed size" field of one entry's central
+     * directory record so the ZIP *claims* to expand past the ceiling.
+     * ZipModuleExtractor sums claimed sizes via ZipArchive::statIndex()
+     * and fails before ever calling extractTo(), so the real vs. claimed
+     * size mismatch for this entry is never actually decompressed.
+     */
+    public function test_rejects_zip_whose_claimed_uncompressed_size_exceeds_the_ceiling(): void
+    {
+        $zipPath = $this->buildZipWithFakeUncompressedSize(
+            [
+                'themes/module.json' => json_encode(['name' => 'Themes', 'alias' => 'themes']),
+            ],
+            'themes/payload.bin',
+            'A',
+            ZipModuleExtractor::MAX_UNCOMPRESSED_BYTES + 1
+        );
+
+        $extractor = new ZipModuleExtractor($this->modulesDir);
+        $result = $extractor->extract($zipPath);
+
+        $this->assertFalse($result->success);
+        $this->assertStringContainsString('too large', $result->error);
+        $this->assertFileDoesNotExist($this->modulesDir.'/themes');
+    }
+
     public function test_rejects_zip_without_module_json(): void
     {
         $zipPath = $this->buildZip([
@@ -207,6 +237,60 @@ class ZipModuleExtractorTest extends TestCase
 
         $this->assertFalse($result->success);
         $this->assertStringContainsString('already exists', $result->error);
+    }
+
+    /**
+     * Builds a ZIP containing $entries plus one additional entry
+     * ($fakeEntryName, with real contents $actualContents), then patches
+     * that entry's central-directory "uncompressed size" field (4 bytes,
+     * little-endian, at offset 24 within the 46-byte fixed central
+     * directory header — see the ZIP APPNOTE spec) to claim $fakeSize
+     * bytes instead of its real, tiny size. ZipArchive's public API has no
+     * way to lie about an entry's size, so the only way to exercise the
+     * "claims an enormous uncompressed size" code path without actually
+     * materializing that many bytes is to patch the raw archive after the
+     * fact.
+     *
+     * @param array<string, string> $entries relative path => file contents
+     */
+    private function buildZipWithFakeUncompressedSize(array $entries, string $fakeEntryName, string $actualContents, int $fakeSize): string
+    {
+        $zipPath = $this->workDir.'/fixture_bomb_'.bin2hex(random_bytes(4)).'.zip';
+        $zip = new \ZipArchive();
+        $zip->open($zipPath, \ZipArchive::CREATE);
+
+        foreach ($entries as $name => $contents) {
+            $zip->addFromString($name, $contents);
+        }
+        $zip->addFromString($fakeEntryName, $actualContents);
+        $zip->close();
+
+        $raw = file_get_contents($zipPath);
+        $patched = false;
+        $offset = 0;
+
+        while (($pos = strpos($raw, "PK\x01\x02", $offset)) !== false) {
+            $nameLen = unpack('v', substr($raw, $pos + 28, 2))[1];
+            $extraLen = unpack('v', substr($raw, $pos + 30, 2))[1];
+            $commentLen = unpack('v', substr($raw, $pos + 32, 2))[1];
+            $name = substr($raw, $pos + 46, $nameLen);
+
+            if ($name === $fakeEntryName) {
+                $raw = substr_replace($raw, pack('V', $fakeSize), $pos + 24, 4);
+                $patched = true;
+                break;
+            }
+
+            $offset = $pos + 46 + $nameLen + $extraLen + $commentLen;
+        }
+
+        if (!$patched) {
+            throw new \RuntimeException("Could not locate central directory entry for {$fakeEntryName} to patch.");
+        }
+
+        file_put_contents($zipPath, $raw);
+
+        return $zipPath;
     }
 
     /**
