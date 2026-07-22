@@ -1,22 +1,3 @@
-@php
-    $handledErrorFields = ['owner', 'repo', 'ref', 'label', 'module_zip'];
-    $generalErrorKeys = collect($errors->keys())->diff($handledErrorFields);
-
-    $firstInvalidRepoField = null;
-    foreach (['owner', 'repo', 'ref', 'label'] as $repoField) {
-        if ($errors->has($repoField)) {
-            $firstInvalidRepoField = $repoField;
-            break;
-        }
-    }
-
-    // After a redirect-with-errors, the page reloads and BS3's tab plugin has
-    // no client-side memory of which tab was open. Compute the correct tab
-    // server-side so an upload-specific error is never left stranded inside
-    // a hidden inactive tab-pane.
-    $activeInstallTab = $errors->has('module_zip') ? 'upload' : 'github';
-@endphp
-
 @if ($generalErrorKeys->isNotEmpty())
     <div class="alert alert-danger alert-dismissible">
         <button type="button" class="close" data-dismiss="alert" aria-label="{{ __('Close') }}"><span aria-hidden="true">&times;</span></button>
@@ -63,19 +44,25 @@
                     @forelse ($repos as $repo)
                         <tr>
                             <td>
-                                {{ $repo['label'] }}
-                                @if (!empty($repo['installed_folder']) && is_dir(base_path('Modules/'.$repo['installed_folder'])))
-                                    <span class="label label-success">{{ __('Installed') }}</span>
+                                {{ $repo->label }}
+                                @if ($repo->installedFolder && is_dir(base_path('Modules/'.$repo->installedFolder)))
+                                    <span class="label label-success">
+                                        @if ($repo->installedAlias)
+                                            {{ __('Installed as :alias', ['alias' => $repo->installedAlias]) }}
+                                        @else
+                                            {{ __('Installed') }}
+                                        @endif
+                                    </span>
                                 @endif
                             </td>
-                            <td>{{ $repo['owner'] }}/{{ $repo['repo'] }}</td>
-                            <td>{{ $repo['ref'] }}</td>
+                            <td>{{ $repo->owner }}/{{ $repo->repo }}</td>
+                            <td>{{ $repo->ref }}</td>
                             <td>
-                                <form method="post" action="{{ route('modulemanager_install_repo', $repo['id']) }}" style="display:inline">
+                                <form method="post" action="{{ route('modulemanager_install_repo', $repo->id) }}" style="display:inline">
                                     {{ csrf_field() }}
                                     <button type="submit" class="btn btn-sm btn-primary">{{ __('Install') }}</button>
                                 </form>
-                                <form method="post" action="{{ route('modulemanager_remove_repo', $repo['id']) }}" style="display:inline; margin-left: 10px;">
+                                <form method="post" action="{{ route('modulemanager_remove_repo', $repo->id) }}" style="display:inline; margin-left: 10px;">
                                     {{ csrf_field() }}
                                     {{ method_field('DELETE') }}
                                     <button type="submit" class="btn btn-sm btn-default" data-confirm-inline="{{ __('Click again to confirm') }}">{{ __('Remove') }}</button>
@@ -96,56 +83,49 @@
 <div class="panel panel-default">
     <div class="panel-heading">{{ __('Install a Module') }}</div>
     <div class="panel-body">
-        <ul class="nav nav-tabs">
+        <ul class="nav nav-tabs" role="tablist">
             <li role="presentation" class="{{ $activeInstallTab === 'github' ? 'active' : '' }}">
-                <a data-toggle="tab" href="#install-tab-github">{{ __('Add a Repository') }}</a>
+                <a id="install-tab-github-tab" data-toggle="tab" href="#install-tab-github" role="tab" aria-controls="install-tab-github" aria-selected="{{ $activeInstallTab === 'github' ? 'true' : 'false' }}">{{ __('Add a Repository') }}</a>
             </li>
             <li role="presentation" class="{{ $activeInstallTab === 'upload' ? 'active' : '' }}">
-                <a data-toggle="tab" href="#install-tab-upload">{{ __('Upload a ZIP') }}</a>
+                <a id="install-tab-upload-tab" data-toggle="tab" href="#install-tab-upload" role="tab" aria-controls="install-tab-upload" aria-selected="{{ $activeInstallTab === 'upload' ? 'true' : 'false' }}">{{ __('Upload a ZIP') }}</a>
             </li>
         </ul>
 
         <div class="tab-content">
-            <div id="install-tab-github" class="tab-pane fade {{ $activeInstallTab === 'github' ? 'in active' : '' }}" style="padding-top: 15px;">
+            <div id="install-tab-github" class="tab-pane fade {{ $activeInstallTab === 'github' ? 'in active' : '' }}" role="tabpanel" aria-labelledby="install-tab-github-tab" style="padding-top: 15px;">
                 <form method="post" action="{{ route('modulemanager_add_repo') }}">
                     {{ csrf_field() }}
                     <div class="row">
-                        <div class="col-xs-12 col-sm-6 col-md-3">
-                            <div class="form-group {{ $errors->has('owner') ? 'has-error' : '' }}">
-                                <label for="add_repo_owner">{{ __('GitHub owner') }}</label>
-                                <input type="text" id="add_repo_owner" name="owner" class="form-control" placeholder="{{ __('e.g. octocat') }}" value="{{ old('owner') }}" @if ($firstInvalidRepoField === 'owner') autofocus @endif @if ($errors->has('owner')) aria-invalid="true" aria-describedby="owner-error" @endif required>
-                                @if ($errors->has('owner'))
-                                    <span class="help-block" id="owner-error">{{ $errors->first('owner') }}</span>
-                                @endif
+                        @php
+                            $repoFormFields = [
+                                ['name' => 'owner', 'label' => __('GitHub owner'), 'placeholder' => __('e.g. octocat'), 'colClass' => 'col-md-3', 'default' => ''],
+                                ['name' => 'repo', 'label' => __('Repository name'), 'placeholder' => __('e.g. AiAssistant'), 'colClass' => 'col-md-3', 'default' => ''],
+                                ['name' => 'ref', 'label' => __('Branch or tag'), 'placeholder' => null, 'colClass' => 'col-md-2', 'default' => 'main'],
+                                ['name' => 'label', 'label' => __('Display name'), 'placeholder' => __('e.g. AI Assistant'), 'colClass' => 'col-md-3', 'default' => ''],
+                            ];
+                        @endphp
+                        @foreach ($repoFormFields as $field)
+                            <div class="col-xs-12 col-sm-6 {{ $field['colClass'] }}">
+                                <div class="form-group {{ $errors->has($field['name']) ? 'has-error' : '' }}">
+                                    <label for="add_repo_{{ $field['name'] }}">{{ $field['label'] }}</label>
+                                    <input
+                                        type="text"
+                                        id="add_repo_{{ $field['name'] }}"
+                                        name="{{ $field['name'] }}"
+                                        class="form-control"
+                                        @if ($field['placeholder']) placeholder="{{ $field['placeholder'] }}" @endif
+                                        value="{{ old($field['name'], $field['default']) }}"
+                                        @if ($firstInvalidRepoField === $field['name']) autofocus @endif
+                                        @if ($errors->has($field['name'])) aria-invalid="true" aria-describedby="{{ $field['name'] }}-error" @endif
+                                        required
+                                    >
+                                    @if ($errors->has($field['name']))
+                                        <span class="help-block" id="{{ $field['name'] }}-error">{{ $errors->first($field['name']) }}</span>
+                                    @endif
+                                </div>
                             </div>
-                        </div>
-                        <div class="col-xs-12 col-sm-6 col-md-3">
-                            <div class="form-group {{ $errors->has('repo') ? 'has-error' : '' }}">
-                                <label for="add_repo_repo">{{ __('Repository name') }}</label>
-                                <input type="text" id="add_repo_repo" name="repo" class="form-control" placeholder="{{ __('e.g. AiAssistant') }}" value="{{ old('repo') }}" @if ($firstInvalidRepoField === 'repo') autofocus @endif @if ($errors->has('repo')) aria-invalid="true" aria-describedby="repo-error" @endif required>
-                                @if ($errors->has('repo'))
-                                    <span class="help-block" id="repo-error">{{ $errors->first('repo') }}</span>
-                                @endif
-                            </div>
-                        </div>
-                        <div class="col-xs-12 col-sm-6 col-md-2">
-                            <div class="form-group {{ $errors->has('ref') ? 'has-error' : '' }}">
-                                <label for="add_repo_ref">{{ __('Branch or tag') }}</label>
-                                <input type="text" id="add_repo_ref" name="ref" class="form-control" value="{{ old('ref', 'main') }}" @if ($firstInvalidRepoField === 'ref') autofocus @endif @if ($errors->has('ref')) aria-invalid="true" aria-describedby="ref-error" @endif required>
-                                @if ($errors->has('ref'))
-                                    <span class="help-block" id="ref-error">{{ $errors->first('ref') }}</span>
-                                @endif
-                            </div>
-                        </div>
-                        <div class="col-xs-12 col-sm-6 col-md-3">
-                            <div class="form-group {{ $errors->has('label') ? 'has-error' : '' }}">
-                                <label for="add_repo_label">{{ __('Display name') }}</label>
-                                <input type="text" id="add_repo_label" name="label" class="form-control" placeholder="{{ __('e.g. AI Assistant') }}" value="{{ old('label') }}" @if ($firstInvalidRepoField === 'label') autofocus @endif @if ($errors->has('label')) aria-invalid="true" aria-describedby="label-error" @endif required>
-                                @if ($errors->has('label'))
-                                    <span class="help-block" id="label-error">{{ $errors->first('label') }}</span>
-                                @endif
-                            </div>
-                        </div>
+                        @endforeach
                         <div class="col-xs-12 col-sm-6 col-md-1">
                             <div class="form-group">
                                 <label class="hidden-xs">&nbsp;</label>
@@ -155,7 +135,7 @@
                     </div>
                 </form>
             </div>
-            <div id="install-tab-upload" class="tab-pane fade {{ $activeInstallTab === 'upload' ? 'in active' : '' }}" style="padding-top: 15px;">
+            <div id="install-tab-upload" class="tab-pane fade {{ $activeInstallTab === 'upload' ? 'in active' : '' }}" role="tabpanel" aria-labelledby="install-tab-upload-tab" style="padding-top: 15px;">
                 <form method="post" action="{{ route('modulemanager_install_upload') }}" enctype="multipart/form-data">
                     {{ csrf_field() }}
                     <div class="form-group {{ $errors->has('module_zip') ? 'has-error' : '' }}">
@@ -220,11 +200,11 @@
         target.classList.add('btn-danger');
         target.textContent = confirmMessage;
 
-        target.setAttribute('data-confirm-timeout-id', setTimeout(function () {
+        setTimeout(function () {
             target.removeAttribute('data-confirm-armed');
             target.classList.remove('btn-danger');
             target.textContent = target.getAttribute('data-original-text');
-        }, 3000));
+        }, 3000);
     }, true);
 
     // Note: jQuery/Bootstrap's bundle loads later in the page (near the end of
@@ -243,5 +223,25 @@
             }, 5000);
         })(successAlerts[i]);
     }
+
+    // Bootstrap 3's tab plugin (jQuery-based) fires a 'shown.bs.tab' event
+    // on the tab <a> that was just activated whenever the user switches
+    // tabs client-side. The initial aria-selected values above are only
+    // correct for the server-rendered state; this keeps them correct after
+    // a client-side switch too. Deferred to the window 'load' event (rather
+    // than run immediately) since jQuery/Bootstrap load later in the page,
+    // same reasoning as the successAlerts block above.
+    window.addEventListener('load', function () {
+        var hasJQueryOn = typeof window.jQuery === 'function' && window.jQuery.fn && typeof window.jQuery.fn.on === 'function';
+        if (!hasJQueryOn) {
+            return;
+        }
+
+        window.jQuery('.nav-tabs[role="tablist"] a[data-toggle="tab"]').on('shown.bs.tab', function (event) {
+            var $tab = window.jQuery(event.target);
+            $tab.closest('.nav-tabs').find('a[data-toggle="tab"]').attr('aria-selected', 'false');
+            $tab.attr('aria-selected', 'true');
+        });
+    });
 })();
 </script>
