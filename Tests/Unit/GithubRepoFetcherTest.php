@@ -75,4 +75,58 @@ class GithubRepoFetcherTest extends TestCase
 
         unlink($destination);
     }
+
+    public function test_download_throws_when_content_length_exceeds_the_size_cap(): void
+    {
+        $destination = tempnam(sys_get_temp_dir(), 'grf_');
+        // 60MB declared, above the 50MB cap. The mock never needs to actually
+        // send that many bytes: on_headers fires as soon as headers arrive,
+        // before the body would stream to the sink.
+        $oversizedBytes = 60 * 1024 * 1024;
+        $mock = new MockHandler([
+            new Response(200, ['Content-Length' => (string) $oversizedBytes], 'irrelevant-body'),
+        ]);
+        $client = new Client(['handler' => HandlerStack::create($mock)]);
+        $fetcher = new GithubRepoFetcher($client);
+
+        $this->expectException(GithubDownloadException::class);
+        $this->expectExceptionMessage('exceeds the');
+
+        try {
+            $fetcher->download('nielspeen', 'AiAssistant', 'main', $destination);
+        } finally {
+            @unlink($destination);
+        }
+    }
+
+    public function test_download_allows_a_response_within_the_size_cap(): void
+    {
+        $destination = tempnam(sys_get_temp_dir(), 'grf_');
+        $mock = new MockHandler([
+            new Response(200, ['Content-Length' => '9'], 'zip-bytes'),
+        ]);
+        $client = new Client(['handler' => HandlerStack::create($mock)]);
+        $fetcher = new GithubRepoFetcher($client);
+
+        $fetcher->download('nielspeen', 'AiAssistant', 'main', $destination);
+
+        $this->assertSame('zip-bytes', file_get_contents($destination));
+        unlink($destination);
+    }
+
+    public function test_download_allows_a_response_missing_content_length(): void
+    {
+        // GitHub's codeload endpoint streams generated archives without a
+        // Content-Length header, so this must fail open rather than reject
+        // every real download.
+        $destination = tempnam(sys_get_temp_dir(), 'grf_');
+        $mock = new MockHandler([new Response(200, [], 'zip-bytes')]);
+        $client = new Client(['handler' => HandlerStack::create($mock)]);
+        $fetcher = new GithubRepoFetcher($client);
+
+        $fetcher->download('nielspeen', 'AiAssistant', 'main', $destination);
+
+        $this->assertSame('zip-bytes', file_get_contents($destination));
+        unlink($destination);
+    }
 }
