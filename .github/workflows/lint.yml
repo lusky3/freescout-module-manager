@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Style/syntax checks run on a single PHP version by design -- the
       # PHP 7.4/8.2 compatibility matrix is already covered by tests.yml.
