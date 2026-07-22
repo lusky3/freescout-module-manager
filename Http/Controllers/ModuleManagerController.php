@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\ModuleManager\Services\Exceptions\GithubDownloadException;
 use Modules\ModuleManager\Services\GithubRepoFetcher;
 use Modules\ModuleManager\Services\SavedRepoStore;
+use Modules\ModuleManager\Services\Support\InstallResult;
 use Modules\ModuleManager\Services\ZipModuleExtractor;
 use Symfony\Component\HttpFoundation\File\Exception\FileException;
 
@@ -30,12 +31,22 @@ class ModuleManagerController extends Controller
         $this->repoStore = $repoStore;
         $this->githubFetcher = $githubFetcher;
         $this->extractor = $extractor;
+
+        // Structural admin gate: every action on this controller requires
+        // it, so there is no method (present or future) that can forget to
+        // call it -- unlike a manual $this->authorizeAdmin() call repeated
+        // in each action.
+        $this->middleware(function ($request, $next) {
+            if (!Auth::user() || !Auth::user()->isAdmin()) {
+                abort(403);
+            }
+
+            return $next($request);
+        });
     }
 
     public function addRepo(Request $request)
     {
-        $this->authorizeAdmin();
-
         $request->validate([
             'owner' => 'required|string|max:100',
             'repo' => 'required|string|max:100',
@@ -55,8 +66,6 @@ class ModuleManagerController extends Controller
 
     public function removeRepo(string $id)
     {
-        $this->authorizeAdmin();
-
         $this->repoStore->remove($id);
 
         return redirect()->back()->with('success', __('Repository removed.'));
@@ -64,8 +73,6 @@ class ModuleManagerController extends Controller
 
     public function installFromRepo(string $id)
     {
-        $this->authorizeAdmin();
-
         $entry = $this->repoStore->find($id);
 
         if (!$entry) {
@@ -73,23 +80,21 @@ class ModuleManagerController extends Controller
         }
 
         $storageDir = $this->ensureStorageDir();
-        $zipPath = $storageDir.'/'.$entry['id'].'.zip';
+        $zipPath = $storageDir.'/'.$entry->id.'.zip';
 
         try {
-            $this->githubFetcher->download($entry['owner'], $entry['repo'], $entry['ref'], $zipPath);
+            $this->githubFetcher->download($entry->owner, $entry->repo, $entry->ref, $zipPath);
         } catch (GithubDownloadException $e) {
             @unlink($zipPath);
             Log::warning('ModuleManager GitHub download failed: '.$e->getMessage());
             return redirect()->back()->withErrors(['install' => $e->getMessage()]);
         }
 
-        return $this->extractAndRespond($zipPath, $entry['id']);
+        return $this->installFromZip($zipPath, $entry->id);
     }
 
     public function installFromUpload(Request $request)
     {
-        $this->authorizeAdmin();
-
         $request->validate([
             // 'max' for file rules is in kilobytes; 51200 KB = 50MB. Adjust MAX_UPLOAD_KB above if this needs to change.
             'module_zip' => 'required|file|mimes:zip|max:'.self::MAX_UPLOAD_KB,
@@ -107,10 +112,17 @@ class ModuleManagerController extends Controller
             return redirect()->back()->withErrors(['module_zip' => __('Could not save the uploaded file.')]);
         }
 
-        return $this->extractAndRespond($storageDir.'/'.$zipName);
+        return $this->installFromZip($storageDir.'/'.$zipName);
     }
 
-    private function extractAndRespond(string $zipPath, ?string $savedRepoId = null)
+    /**
+     * Extracts the ZIP at $zipPath and builds the redirect response for it.
+     * The "what happens after a successful extraction" bookkeeping (marking
+     * a saved repo installed, clearing caches, logging) is intentionally
+     * pulled out into afterSuccessfulInstall() below, rather than inlined
+     * here.
+     */
+    private function installFromZip(string $zipPath, ?string $savedRepoId = null)
     {
         $result = $this->extractor->extract($zipPath);
 
@@ -120,6 +132,15 @@ class ModuleManagerController extends Controller
             return redirect()->back()->withErrors(['module' => $result->error]);
         }
 
+        $this->afterSuccessfulInstall($result, $savedRepoId);
+
+        return redirect()->back()
+            ->with('success', __('Installed module: :name', ['name' => $result->name]))
+            ->with('warning', __('Please enable the module from the Modules page.'));
+    }
+
+    private function afterSuccessfulInstall(InstallResult $result, ?string $savedRepoId): void
+    {
         if ($savedRepoId !== null && $result->folder !== null) {
             $this->repoStore->markInstalled($savedRepoId, $result->alias, $result->folder);
         }
@@ -127,10 +148,6 @@ class ModuleManagerController extends Controller
         $this->clearCaches();
 
         Log::info('ModuleManager installed module: '.$result->alias);
-
-        return redirect()->back()
-            ->with('success', __('Installed module: :name', ['name' => $result->name]))
-            ->with('warning', __('Please enable the module from the Modules page.'));
     }
 
     private function ensureStorageDir(): string
@@ -155,13 +172,6 @@ class ModuleManagerController extends Controller
             Artisan::call('route:clear');
         } catch (\Throwable $e) {
             Log::warning('ModuleManager cache clear failed: '.$e->getMessage());
-        }
-    }
-
-    private function authorizeAdmin(): void
-    {
-        if (!Auth::user() || !Auth::user()->isAdmin()) {
-            abort(403);
         }
     }
 }
