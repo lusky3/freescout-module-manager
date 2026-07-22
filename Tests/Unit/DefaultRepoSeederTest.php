@@ -39,7 +39,7 @@ class DefaultRepoSeederTest extends TestCase
         $seeder->seedIfNeeded();
 
         $this->assertCount(1, $repoStore->all());
-        $this->assertSame('nielspeen', $repoStore->all()[0]['owner']);
+        $this->assertSame('nielspeen', $repoStore->all()[0]->owner);
     }
 
     public function test_does_not_reseed_after_first_run(): void
@@ -49,7 +49,7 @@ class DefaultRepoSeederTest extends TestCase
         $seeder = new DefaultRepoSeeder($repoStore, $options, $this->defaultsPath);
 
         $seeder->seedIfNeeded();
-        $repoStore->remove($repoStore->all()[0]['id']);
+        $repoStore->remove($repoStore->all()[0]->id);
         $seeder->seedIfNeeded();
 
         $this->assertCount(0, $repoStore->all());
@@ -75,7 +75,7 @@ class DefaultRepoSeederTest extends TestCase
 
         $all = $repoStore->all();
         $this->assertCount(1, $all);
-        $this->assertSame('nielspeen', $all[0]['owner']);
+        $this->assertSame('nielspeen', $all[0]->owner);
         $this->assertTrue($options->get(DefaultRepoSeeder::SEEDED_OPTION_KEY, false));
     }
 }
