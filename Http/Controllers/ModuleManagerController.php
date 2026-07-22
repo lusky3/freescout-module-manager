@@ -69,7 +69,7 @@ class ModuleManagerController extends Controller
         $entry = $this->repoStore->find($id);
 
         if (!$entry) {
-            return redirect()->back()->withErrors(['repo' => __('Saved repository not found.')]);
+            return redirect()->back()->withErrors(['install' => __('Saved repository not found.')]);
         }
 
         $storageDir = $this->ensureStorageDir();
@@ -80,7 +80,7 @@ class ModuleManagerController extends Controller
         } catch (GithubDownloadException $e) {
             @unlink($zipPath);
             Log::warning('ModuleManager GitHub download failed: '.$e->getMessage());
-            return redirect()->back()->withErrors(['repo' => $e->getMessage()]);
+            return redirect()->back()->withErrors(['install' => $e->getMessage()]);
         }
 
         return $this->extractAndRespond($zipPath);
