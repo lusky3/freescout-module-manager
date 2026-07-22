@@ -75,7 +75,7 @@ class ZipModuleExtractor
             $totalUncompressedSize = $this->sumUncompressedSize($zip);
             if ($totalUncompressedSize > self::MAX_UNCOMPRESSED_BYTES) {
                 return InstallResult::fail(
-                    'ZIP archive is too large when uncompressed (over '.self::MAX_UNCOMPRESSED_BYTES.' bytes); refusing to extract.'
+                    'ZIP archive is too large when uncompressed (over ' . self::MAX_UNCOMPRESSED_BYTES . ' bytes); refusing to extract.'
                 );
             }
 
@@ -84,12 +84,12 @@ class ZipModuleExtractor
                 return InstallResult::fail("ZIP is missing a valid {$topFolder}/module.json with 'name' and 'alias'.");
             }
 
-            $destination = $this->modulesDir.'/'.$topFolder;
+            $destination = $this->modulesDir . '/' . $topFolder;
             if (is_dir($destination)) {
                 return InstallResult::fail("A module folder named '{$topFolder}' already exists.");
             }
 
-            $stagingDir = $this->modulesDir.'/.staging-'.bin2hex(random_bytes(8));
+            $stagingDir = $this->modulesDir . '/.staging-' . bin2hex(random_bytes(8));
             if (!mkdir($stagingDir, 0777, true)) {
                 return InstallResult::fail('Could not create a staging directory for extraction.');
             }
@@ -112,7 +112,7 @@ class ZipModuleExtractor
 
         // The ZIP handle is closed from here on; everything below is pure
         // filesystem work using the values captured above.
-        $stagedModuleDir = $stagingDir.'/'.$topFolder;
+        $stagedModuleDir = $stagingDir . '/' . $topFolder;
         if (!is_dir($stagedModuleDir)) {
             $this->removeDirectory($stagingDir);
 
@@ -252,7 +252,7 @@ class ZipModuleExtractor
 
     private function readModuleJson(\ZipArchive $zip, string $topFolder): ?array
     {
-        $contents = $zip->getFromName($topFolder.'/module.json');
+        $contents = $zip->getFromName($topFolder . '/module.json');
         if ($contents === false) {
             return null;
         }

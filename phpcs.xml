@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<ruleset name="ModuleManager">
+    <description>PSR-12 coding standard for the ModuleManager FreeScout module.</description>
+
+    <file>Http</file>
+    <file>Providers</file>
+    <file>Services</file>
+    <file>Tests</file>
+    <file>module.json</file>
+
+    <arg name="extensions" value="php"/>
+    <arg value="p"/>
+
+    <!--
+        Blade templates mix raw HTML with PHP directives (@if, {{ }}, etc.) and
+        are not valid standalone PHP files, so PSR-12 structural rules (file
+        layout, closing tags, one class per file...) don't apply to them.
+        Excluded from linting rather than fought against.
+    -->
+    <exclude-pattern>*/Resources/views/*</exclude-pattern>
+
+    <rule ref="PSR12"/>
+
+    <!--
+        PHPUnit's long-standing convention is snake_case test method names
+        (test_it_does_the_thing), which PSR-1/PSR-12's CamelCapsMethodName
+        sniff flags as an error. Renaming ~30 existing test methods across
+        the suite purely for style, with no behavioral upside, is out of
+        scope here — so this single sniff is relaxed for the Tests
+        directory only. It still applies everywhere else.
+    -->
+    <rule ref="PSR1.Methods.CamelCapsMethodName">
+        <exclude-pattern>*/Tests/*</exclude-pattern>
+    </rule>
+</ruleset>

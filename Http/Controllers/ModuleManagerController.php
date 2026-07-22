@@ -80,13 +80,13 @@ class ModuleManagerController extends Controller
         }
 
         $storageDir = $this->ensureStorageDir();
-        $zipPath = $storageDir.'/'.$entry->id.'.zip';
+        $zipPath = $storageDir . '/' . $entry->id . '.zip';
 
         try {
             $this->githubFetcher->download($entry->owner, $entry->repo, $entry->ref, $zipPath);
         } catch (GithubDownloadException $e) {
             @unlink($zipPath);
-            Log::warning('ModuleManager GitHub download failed: '.$e->getMessage());
+            Log::warning('ModuleManager GitHub download failed: ' . $e->getMessage());
             return redirect()->back()->withErrors(['install' => $e->getMessage()]);
         }
 
@@ -97,22 +97,22 @@ class ModuleManagerController extends Controller
     {
         $request->validate([
             // 'max' for file rules is in kilobytes; 51200 KB = 50MB. Adjust MAX_UPLOAD_KB above if this needs to change.
-            'module_zip' => 'required|file|mimes:zip|max:'.self::MAX_UPLOAD_KB,
+            'module_zip' => 'required|file|mimes:zip|max:' . self::MAX_UPLOAD_KB,
         ]);
 
         $storageDir = $this->ensureStorageDir();
 
         $uploaded = $request->file('module_zip');
-        $zipName = 'upload_'.bin2hex(random_bytes(6)).'.zip';
+        $zipName = 'upload_' . bin2hex(random_bytes(6)) . '.zip';
 
         try {
             $uploaded->move($storageDir, $zipName);
         } catch (FileException $e) {
-            Log::warning('ModuleManager upload move failed: '.$e->getMessage());
+            Log::warning('ModuleManager upload move failed: ' . $e->getMessage());
             return redirect()->back()->withErrors(['module_zip' => __('Could not save the uploaded file.')]);
         }
 
-        return $this->installFromZip($storageDir.'/'.$zipName);
+        return $this->installFromZip($storageDir . '/' . $zipName);
     }
 
     /**
@@ -147,7 +147,7 @@ class ModuleManagerController extends Controller
 
         $this->clearCaches();
 
-        Log::info('ModuleManager installed module: '.$result->alias);
+        Log::info('ModuleManager installed module: ' . $result->alias);
     }
 
     private function ensureStorageDir(): string
@@ -171,7 +171,7 @@ class ModuleManagerController extends Controller
             Artisan::call('config:clear');
             Artisan::call('route:clear');
         } catch (\Throwable $e) {
-            Log::warning('ModuleManager cache clear failed: '.$e->getMessage());
+            Log::warning('ModuleManager cache clear failed: ' . $e->getMessage());
         }
     }
 }

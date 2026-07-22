@@ -13,8 +13,8 @@ class ZipModuleExtractorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->workDir = sys_get_temp_dir().'/zme_test_'.bin2hex(random_bytes(6));
-        $this->modulesDir = $this->workDir.'/Modules';
+        $this->workDir = sys_get_temp_dir() . '/zme_test_' . bin2hex(random_bytes(6));
+        $this->modulesDir = $this->workDir . '/Modules';
         mkdir($this->modulesDir, 0777, true);
     }
 
@@ -38,8 +38,8 @@ class ZipModuleExtractorTest extends TestCase
         $this->assertSame('themes', $result->alias);
         $this->assertSame('Themes', $result->name);
         $this->assertSame('themes', $result->folder);
-        $this->assertFileExists($this->modulesDir.'/themes/module.json');
-        $this->assertFileExists($this->modulesDir.'/themes/Providers/ThemesServiceProvider.php');
+        $this->assertFileExists($this->modulesDir . '/themes/module.json');
+        $this->assertFileExists($this->modulesDir . '/themes/Providers/ThemesServiceProvider.php');
     }
 
     /**
@@ -62,7 +62,7 @@ class ZipModuleExtractorTest extends TestCase
         $this->assertSame('aiassistant', $result->alias);
         $this->assertSame('AI Assistant', $result->name);
         $this->assertSame('AiAssistant-main', $result->folder);
-        $this->assertFileExists($this->modulesDir.'/AiAssistant-main/module.json');
+        $this->assertFileExists($this->modulesDir . '/AiAssistant-main/module.json');
     }
 
     public function test_extraction_does_not_leave_a_staging_directory_behind(): void
@@ -76,7 +76,7 @@ class ZipModuleExtractorTest extends TestCase
 
         $this->assertTrue($result->success);
 
-        $leftovers = glob($this->modulesDir.'/.staging-*');
+        $leftovers = glob($this->modulesDir . '/.staging-*');
         $this->assertSame([], $leftovers, 'No .staging-* directory should remain after a successful extract.');
     }
 
@@ -92,7 +92,7 @@ class ZipModuleExtractorTest extends TestCase
 
         $this->assertFalse($result->success);
         $this->assertStringContainsString('Unsafe path', $result->error);
-        $this->assertFileDoesNotExist($this->workDir.'/evil.php');
+        $this->assertFileDoesNotExist($this->workDir . '/evil.php');
     }
 
     /**
@@ -116,8 +116,8 @@ class ZipModuleExtractorTest extends TestCase
         $this->assertFalse($result->success);
         $this->assertStringContainsString('Unsafe path', $result->error);
         $this->assertStringContainsString('/etc/passwd', $result->error);
-        $this->assertFileDoesNotExist($this->modulesDir.'/themes');
-        $this->assertFileDoesNotExist($this->modulesDir.'/etc');
+        $this->assertFileDoesNotExist($this->modulesDir . '/themes');
+        $this->assertFileDoesNotExist($this->modulesDir . '/etc');
     }
 
     public function test_rejects_zip_with_backslash_entry(): void
@@ -132,7 +132,7 @@ class ZipModuleExtractorTest extends TestCase
 
         $this->assertFalse($result->success);
         $this->assertStringContainsString('Unsafe path', $result->error);
-        $this->assertFileDoesNotExist($this->workDir.'/evil.php');
+        $this->assertFileDoesNotExist($this->workDir . '/evil.php');
     }
 
     /**
@@ -146,7 +146,7 @@ class ZipModuleExtractorTest extends TestCase
      */
     public function test_rejects_zip_with_a_symlink_entry(): void
     {
-        $zipPath = $this->workDir.'/fixture_symlink.zip';
+        $zipPath = $this->workDir . '/fixture_symlink.zip';
         $zip = new \ZipArchive();
         $zip->open($zipPath, \ZipArchive::CREATE);
         $zip->addFromString('themes/module.json', json_encode(['name' => 'Themes', 'alias' => 'themes']));
@@ -163,7 +163,7 @@ class ZipModuleExtractorTest extends TestCase
         $this->assertFalse($result->success);
         $this->assertStringContainsString('symlink', $result->error);
         $this->assertStringContainsString('evil-link', $result->error);
-        $this->assertFileDoesNotExist($this->modulesDir.'/themes');
+        $this->assertFileDoesNotExist($this->modulesDir . '/themes');
     }
 
     /**
@@ -193,7 +193,7 @@ class ZipModuleExtractorTest extends TestCase
 
         $this->assertFalse($result->success);
         $this->assertStringContainsString('too large', $result->error);
-        $this->assertFileDoesNotExist($this->modulesDir.'/themes');
+        $this->assertFileDoesNotExist($this->modulesDir . '/themes');
     }
 
     public function test_rejects_zip_without_module_json(): void
@@ -225,8 +225,8 @@ class ZipModuleExtractorTest extends TestCase
 
     public function test_refuses_to_overwrite_an_existing_module_folder(): void
     {
-        mkdir($this->modulesDir.'/themes', 0777, true);
-        file_put_contents($this->modulesDir.'/themes/module.json', '{}');
+        mkdir($this->modulesDir . '/themes', 0777, true);
+        file_put_contents($this->modulesDir . '/themes/module.json', '{}');
 
         $zipPath = $this->buildZip([
             'themes/module.json' => json_encode(['name' => 'Themes', 'alias' => 'themes']),
@@ -255,7 +255,7 @@ class ZipModuleExtractorTest extends TestCase
      */
     private function buildZipWithFakeUncompressedSize(array $entries, string $fakeEntryName, string $actualContents, int $fakeSize): string
     {
-        $zipPath = $this->workDir.'/fixture_bomb_'.bin2hex(random_bytes(4)).'.zip';
+        $zipPath = $this->workDir . '/fixture_bomb_' . bin2hex(random_bytes(4)) . '.zip';
         $zip = new \ZipArchive();
         $zip->open($zipPath, \ZipArchive::CREATE);
 
@@ -298,7 +298,7 @@ class ZipModuleExtractorTest extends TestCase
      */
     private function buildZip(array $entries): string
     {
-        $zipPath = $this->workDir.'/fixture_'.bin2hex(random_bytes(4)).'.zip';
+        $zipPath = $this->workDir . '/fixture_' . bin2hex(random_bytes(4)) . '.zip';
         $zip = new \ZipArchive();
         $zip->open($zipPath, \ZipArchive::CREATE);
 

@@ -88,7 +88,7 @@ class SavedRepoStoreTest extends TestCase
         // withLock() actually wrapping every mutating call: two sequential
         // add()s and a remove() all complete without deadlocking on the
         // same lock file, and the final state reflects all three calls.
-        $lockFilePath = sys_get_temp_dir().'/modulemanager_test_lock_'.bin2hex(random_bytes(4)).'.lock';
+        $lockFilePath = sys_get_temp_dir() . '/modulemanager_test_lock_' . bin2hex(random_bytes(4)) . '.lock';
         $store = new SavedRepoStore(new FakeOptionStore(), $lockFilePath);
 
         $first = $store->add('nielspeen', 'AiAssistant', 'main', 'AI Assistant');

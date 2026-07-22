@@ -24,7 +24,7 @@ class SavedRepoStore
     public function __construct(OptionStoreInterface $options, ?string $lockFilePath = null)
     {
         $this->options = $options;
-        $this->lockFilePath = $lockFilePath ?? sys_get_temp_dir().'/modulemanager_saved_repos.lock';
+        $this->lockFilePath = $lockFilePath ?? sys_get_temp_dir() . '/modulemanager_saved_repos.lock';
     }
 
     /** @return SavedRepo[] */

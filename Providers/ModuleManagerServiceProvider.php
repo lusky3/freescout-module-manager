@@ -29,7 +29,7 @@ class ModuleManagerServiceProvider extends ServiceProvider
             return new DefaultRepoSeeder(
                 $app->make(SavedRepoStore::class),
                 $app->make(OptionStoreInterface::class),
-                __DIR__.'/../Resources/default-repos.json'
+                __DIR__ . '/../Resources/default-repos.json'
             );
         });
 
@@ -45,10 +45,10 @@ class ModuleManagerServiceProvider extends ServiceProvider
     public function boot()
     {
         $this->loadViewsFrom(array_merge(array_map(function ($path) {
-            return $path.'/modules/modulemanager';
-        }, \Config::get('view.paths')), [__DIR__.'/../Resources/views']), 'modulemanager');
+            return $path . '/modules/modulemanager';
+        }, \Config::get('view.paths')), [__DIR__ . '/../Resources/views']), 'modulemanager');
 
-        $this->loadRoutesFrom(__DIR__.'/../Http/routes.php');
+        $this->loadRoutesFrom(__DIR__ . '/../Http/routes.php');
 
         $this->registerSettingsSection();
         $this->registerViewComposer();

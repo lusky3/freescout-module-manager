@@ -79,7 +79,7 @@ class GithubRepoFetcher
 
                     if ((int) $contentLength > self::MAX_DOWNLOAD_BYTES) {
                         throw new GithubDownloadException(
-                            "Refusing to download {$owner}/{$repo}@{$ref}: archive size ({$contentLength} bytes) exceeds the ".self::MAX_DOWNLOAD_BYTES.'-byte limit.'
+                            "Refusing to download {$owner}/{$repo}@{$ref}: archive size ({$contentLength} bytes) exceeds the " . self::MAX_DOWNLOAD_BYTES . '-byte limit.'
                         );
                     }
                 },

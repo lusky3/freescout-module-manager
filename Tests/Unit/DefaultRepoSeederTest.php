@@ -15,12 +15,12 @@ class DefaultRepoSeederTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->defaultsPath = sys_get_temp_dir().'/default_repos_'.bin2hex(random_bytes(4)).'.json';
+        $this->defaultsPath = sys_get_temp_dir() . '/default_repos_' . bin2hex(random_bytes(4)) . '.json';
         file_put_contents($this->defaultsPath, json_encode([
             ['owner' => 'nielspeen', 'repo' => 'AiAssistant', 'ref' => 'main', 'label' => 'AI Assistant'],
         ]));
 
-        $this->malformedDefaultsPath = sys_get_temp_dir().'/default_repos_malformed_'.bin2hex(random_bytes(4)).'.json';
+        $this->malformedDefaultsPath = sys_get_temp_dir() . '/default_repos_malformed_' . bin2hex(random_bytes(4)) . '.json';
     }
 
     protected function tearDown(): void
