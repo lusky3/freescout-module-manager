@@ -83,7 +83,7 @@ class ZipModuleExtractor
 
         $this->removeDirectory($stagingDir);
 
-        return InstallResult::ok($moduleInfo['alias'], $moduleInfo['name']);
+        return InstallResult::ok($moduleInfo['alias'], $moduleInfo['name'], $topFolder);
     }
 
     private function findSingleTopLevelFolder(\ZipArchive $zip): ?string

@@ -64,4 +64,28 @@ class SavedRepoStore
 
         return null;
     }
+
+    public function markInstalled(string $id, string $alias, string $folder): bool
+    {
+        $entries = $this->all();
+        $found = false;
+
+        foreach ($entries as &$entry) {
+            if ($entry['id'] === $id) {
+                $entry['installed_alias'] = $alias;
+                $entry['installed_folder'] = $folder;
+                $found = true;
+                break;
+            }
+        }
+        unset($entry);
+
+        if (!$found) {
+            return false;
+        }
+
+        $this->options->set(self::OPTION_KEY, $entries);
+
+        return true;
+    }
 }

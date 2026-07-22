@@ -83,7 +83,7 @@ class ModuleManagerController extends Controller
             return redirect()->back()->withErrors(['install' => $e->getMessage()]);
         }
 
-        return $this->extractAndRespond($zipPath);
+        return $this->extractAndRespond($zipPath, $entry['id']);
     }
 
     public function installFromUpload(Request $request)
@@ -110,7 +110,7 @@ class ModuleManagerController extends Controller
         return $this->extractAndRespond($storageDir.'/'.$zipName);
     }
 
-    private function extractAndRespond(string $zipPath)
+    private function extractAndRespond(string $zipPath, ?string $savedRepoId = null)
     {
         $result = $this->extractor->extract($zipPath);
 
@@ -118,6 +118,10 @@ class ModuleManagerController extends Controller
 
         if (!$result->success) {
             return redirect()->back()->withErrors(['module' => $result->error]);
+        }
+
+        if ($savedRepoId !== null && $result->folder !== null) {
+            $this->repoStore->markInstalled($savedRepoId, $result->alias, $result->folder);
         }
 
         $this->clearCaches();

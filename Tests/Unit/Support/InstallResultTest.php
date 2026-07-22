@@ -14,6 +14,18 @@ class InstallResultTest extends TestCase
         $this->assertTrue($result->success);
         $this->assertSame('themes', $result->alias);
         $this->assertSame('Themes', $result->name);
+        $this->assertNull($result->folder);
+        $this->assertNull($result->error);
+    }
+
+    public function test_ok_result_accepts_an_optional_folder(): void
+    {
+        $result = InstallResult::ok('aiassistant', 'AI Assistant', 'AiAssistant-main');
+
+        $this->assertTrue($result->success);
+        $this->assertSame('aiassistant', $result->alias);
+        $this->assertSame('AI Assistant', $result->name);
+        $this->assertSame('AiAssistant-main', $result->folder);
         $this->assertNull($result->error);
     }
 
@@ -24,6 +36,7 @@ class InstallResultTest extends TestCase
         $this->assertFalse($result->success);
         $this->assertNull($result->alias);
         $this->assertNull($result->name);
+        $this->assertNull($result->folder);
         $this->assertSame('ZIP could not be opened.', $result->error);
     }
 }

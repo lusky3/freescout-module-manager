@@ -37,8 +37,32 @@ class ZipModuleExtractorTest extends TestCase
         $this->assertTrue($result->success);
         $this->assertSame('themes', $result->alias);
         $this->assertSame('Themes', $result->name);
+        $this->assertSame('themes', $result->folder);
         $this->assertFileExists($this->modulesDir.'/themes/module.json');
         $this->assertFileExists($this->modulesDir.'/themes/Providers/ThemesServiceProvider.php');
+    }
+
+    /**
+     * The extracted top-level folder name is not necessarily the module's
+     * alias (a real prior install produced folder 'AiAssistant-main' with
+     * alias 'aiassistant'). InstallResult::$folder must reflect the actual
+     * on-disk folder name, not the alias, since that's what later disk-state
+     * checks (e.g. the "Installed" badge) need to look up.
+     */
+    public function test_extraction_folder_reflects_actual_top_level_directory_name_when_it_differs_from_alias(): void
+    {
+        $zipPath = $this->buildZip([
+            'AiAssistant-main/module.json' => json_encode(['name' => 'AI Assistant', 'alias' => 'aiassistant']),
+        ]);
+
+        $extractor = new ZipModuleExtractor($this->modulesDir);
+        $result = $extractor->extract($zipPath);
+
+        $this->assertTrue($result->success);
+        $this->assertSame('aiassistant', $result->alias);
+        $this->assertSame('AI Assistant', $result->name);
+        $this->assertSame('AiAssistant-main', $result->folder);
+        $this->assertFileExists($this->modulesDir.'/AiAssistant-main/module.json');
     }
 
     public function test_extraction_does_not_leave_a_staging_directory_behind(): void

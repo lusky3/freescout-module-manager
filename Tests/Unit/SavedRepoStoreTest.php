@@ -53,4 +53,24 @@ class SavedRepoStoreTest extends TestCase
         $this->assertSame($entry, $store->find($entry['id']));
         $this->assertNull($store->find('does-not-exist'));
     }
+
+    public function test_mark_installed_sets_alias_and_folder_and_returns_true(): void
+    {
+        $store = new SavedRepoStore(new FakeOptionStore());
+        $entry = $store->add('nielspeen', 'AiAssistant', 'main', 'AI Assistant');
+
+        $this->assertTrue($store->markInstalled($entry['id'], 'aiassistant', 'AiAssistant-main'));
+
+        $updated = $store->find($entry['id']);
+        $this->assertSame('aiassistant', $updated['installed_alias']);
+        $this->assertSame('AiAssistant-main', $updated['installed_folder']);
+    }
+
+    public function test_mark_installed_returns_false_when_id_not_found(): void
+    {
+        $store = new SavedRepoStore(new FakeOptionStore());
+        $store->add('nielspeen', 'AiAssistant', 'main', 'AI Assistant');
+
+        $this->assertFalse($store->markInstalled('does-not-exist', 'aiassistant', 'AiAssistant-main'));
+    }
 }
