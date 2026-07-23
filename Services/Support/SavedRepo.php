@@ -24,10 +24,25 @@ namespace Modules\ModuleManager\Services\Support;
  * stored data is rejected (returns null, by catching the constructor's
  * \InvalidArgumentException) so a corrupted entry degrades gracefully
  * instead of throwing.
+ *
+ * installedCommitSha/latestKnownRef/latestKnownLabel/latestKnownUrl/
+ * latestCheckedAt support update checking (Services\UpdateChecker,
+ * SavedRepoStore::recordUpdateCheck()/markUpdated()) -- see
+ * isUpdateAvailable() below for how they're compared.
  */
 class SavedRepo
 {
     private const REQUIRED_STRING_KEYS = ['id', 'owner', 'repo', 'ref', 'label'];
+
+    private const OPTIONAL_STRING_KEYS = [
+        'installedAlias' => 'installed_alias',
+        'installedFolder' => 'installed_folder',
+        'installedCommitSha' => 'installed_commit_sha',
+        'latestKnownRef' => 'latest_known_ref',
+        'latestKnownLabel' => 'latest_known_label',
+        'latestKnownUrl' => 'latest_known_url',
+        'latestCheckedAt' => 'latest_checked_at',
+    ];
 
     public string $id;
     public string $owner;
@@ -36,6 +51,11 @@ class SavedRepo
     public string $label;
     public ?string $installedAlias;
     public ?string $installedFolder;
+    public ?string $installedCommitSha;
+    public ?string $latestKnownRef;
+    public ?string $latestKnownLabel;
+    public ?string $latestKnownUrl;
+    public ?string $latestCheckedAt;
 
     /**
      * @throws \InvalidArgumentException if id/owner/repo/ref/label is not a
@@ -48,7 +68,12 @@ class SavedRepo
         string $ref,
         string $label,
         ?string $installedAlias = null,
-        ?string $installedFolder = null
+        ?string $installedFolder = null,
+        ?string $installedCommitSha = null,
+        ?string $latestKnownRef = null,
+        ?string $latestKnownLabel = null,
+        ?string $latestKnownUrl = null,
+        ?string $latestCheckedAt = null
     ) {
         $values = compact('id', 'owner', 'repo', 'ref', 'label');
 
@@ -65,6 +90,11 @@ class SavedRepo
         $this->label = $label;
         $this->installedAlias = $installedAlias;
         $this->installedFolder = $installedFolder;
+        $this->installedCommitSha = $installedCommitSha;
+        $this->latestKnownRef = $latestKnownRef;
+        $this->latestKnownLabel = $latestKnownLabel;
+        $this->latestKnownUrl = $latestKnownUrl;
+        $this->latestCheckedAt = $latestCheckedAt;
     }
 
     public function toArray(): array
@@ -77,7 +107,38 @@ class SavedRepo
             'label' => $this->label,
             'installed_alias' => $this->installedAlias,
             'installed_folder' => $this->installedFolder,
+            'installed_commit_sha' => $this->installedCommitSha,
+            'latest_known_ref' => $this->latestKnownRef,
+            'latest_known_label' => $this->latestKnownLabel,
+            'latest_known_url' => $this->latestKnownUrl,
+            'latest_checked_at' => $this->latestCheckedAt,
         ];
+    }
+
+    /**
+     * Compares this repo's currently-installed state against the last
+     * known "latest available" check result. Returns null when no check
+     * has ever run (latestKnownRef is null) -- "unknown", not "no update"
+     * -- so the UI can show a distinct "not checked yet" state instead of
+     * a false "up to date".
+     *
+     * The comparison key is deliberately mode-agnostic: for a repo tracked
+     * by release tag, $ref itself IS the version marker
+     * (SavedRepoStore::markUpdated() sets it to the tag just installed),
+     * so $installedCommitSha stays null and $ref is what's compared. For a
+     * repo with no releases (tracked by commit on a branch), $ref is just
+     * the branch *name* and never changes, so $installedCommitSha (the
+     * actual commit last installed) is compared instead.
+     */
+    public function isUpdateAvailable(): ?bool
+    {
+        if ($this->latestKnownRef === null) {
+            return null;
+        }
+
+        $installedMarker = $this->installedCommitSha ?? $this->ref;
+
+        return $this->latestKnownRef !== $installedMarker;
     }
 
     /**
@@ -100,15 +161,15 @@ class SavedRepo
             }
         }
 
-        $installedAlias = $data['installed_alias'] ?? null;
-        $installedFolder = $data['installed_folder'] ?? null;
+        $optional = [];
+        foreach (self::OPTIONAL_STRING_KEYS as $property => $storageKey) {
+            $value = $data[$storageKey] ?? null;
 
-        if ($installedAlias !== null && !is_string($installedAlias)) {
-            return null;
-        }
+            if ($value !== null && !is_string($value)) {
+                return null;
+            }
 
-        if ($installedFolder !== null && !is_string($installedFolder)) {
-            return null;
+            $optional[$property] = $value !== null && $value !== '' ? $value : null;
         }
 
         try {
@@ -118,8 +179,13 @@ class SavedRepo
                 $data['repo'],
                 $data['ref'],
                 $data['label'],
-                $installedAlias !== null && $installedAlias !== '' ? $installedAlias : null,
-                $installedFolder !== null && $installedFolder !== '' ? $installedFolder : null
+                $optional['installedAlias'],
+                $optional['installedFolder'],
+                $optional['installedCommitSha'],
+                $optional['latestKnownRef'],
+                $optional['latestKnownLabel'],
+                $optional['latestKnownUrl'],
+                $optional['latestCheckedAt']
             );
         } catch (\InvalidArgumentException $e) {
             return null;
