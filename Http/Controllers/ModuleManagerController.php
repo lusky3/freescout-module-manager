@@ -13,6 +13,9 @@ use Modules\ModuleManager\Services\GithubRepoFetcher;
 use Modules\ModuleManager\Services\GithubRepoResolver;
 use Modules\ModuleManager\Services\SavedRepoStore;
 use Modules\ModuleManager\Services\Support\InstallResult;
+use Modules\ModuleManager\Services\Support\SavedRepo;
+use Modules\ModuleManager\Services\Support\UpdateTarget;
+use Modules\ModuleManager\Services\UpdateChecker;
 use Modules\ModuleManager\Services\ZipModuleExtractor;
 use Symfony\Component\HttpFoundation\File\Exception\FileException;
 
@@ -29,16 +32,20 @@ class ModuleManagerController extends Controller
 
     private ZipModuleExtractor $extractor;
 
+    private UpdateChecker $updateChecker;
+
     public function __construct(
         SavedRepoStore $repoStore,
         GithubRepoFetcher $githubFetcher,
         GithubRepoResolver $githubResolver,
-        ZipModuleExtractor $extractor
+        ZipModuleExtractor $extractor,
+        UpdateChecker $updateChecker
     ) {
         $this->repoStore = $repoStore;
         $this->githubFetcher = $githubFetcher;
         $this->githubResolver = $githubResolver;
         $this->extractor = $extractor;
+        $this->updateChecker = $updateChecker;
 
         // Structural admin gate: every action on this controller requires
         // it, so there is no method (present or future) that can forget to
@@ -176,6 +183,83 @@ class ModuleManagerController extends Controller
                 ->with('success', __('Installed module: :name', ['name' => $result->name]))
                 ->with('warning', __('Please enable the module from the Modules page.'));
         });
+    }
+
+    public function checkForUpdate(string $id)
+    {
+        $entry = $this->repoStore->find($id);
+
+        if (!$entry) {
+            return redirect()->back()->withErrors(['update' => __('Saved repository not found.')]);
+        }
+
+        try {
+            $target = $this->updateChecker->findLatest($entry->owner, $entry->repo, $entry->ref);
+        } catch (GithubDownloadException $e) {
+            Log::warning('ModuleManager update check failed: ' . $e->getMessage());
+            return redirect()->back()->withErrors(['update' => $e->getMessage()]);
+        }
+
+        $this->repoStore->recordUpdateCheck($id, $target, now()->toIso8601String());
+
+        return redirect()->back()->with('success', __('Checked :label for updates.', ['label' => $entry->label]));
+    }
+
+    public function updateRepo(string $id)
+    {
+        $entry = $this->repoStore->find($id);
+
+        if (!$entry) {
+            return redirect()->back()->withErrors(['update' => __('Saved repository not found.')]);
+        }
+
+        // Always re-checks fresh rather than trusting a possibly-stale
+        // cached badge: this is a mutating action (re-downloads and
+        // extracts over the currently-installed module), so it installs
+        // whatever GitHub reports as current *right now*, not whatever was
+        // true the last time someone clicked "Check for Updates".
+        try {
+            $target = $this->updateChecker->findLatest($entry->owner, $entry->repo, $entry->ref);
+        } catch (GithubDownloadException $e) {
+            Log::warning('ModuleManager update check failed: ' . $e->getMessage());
+            return redirect()->back()->withErrors(['update' => $e->getMessage()]);
+        }
+
+        $storageDir = $this->ensureStorageDir();
+        $zipName = 'update_' . $entry->id . '_' . bin2hex(random_bytes(6)) . '.zip';
+        $zipPath = $storageDir . '/' . $zipName;
+
+        try {
+            // $target->ref works here whether it's a tag name or a full
+            // commit SHA -- GithubRepoFetcher::buildZipUrl() just
+            // rawurlencode()s whatever ref string it's given, and GitHub's
+            // archive endpoint accepts a commit SHA the same way it
+            // accepts a branch or tag name.
+            $this->githubFetcher->download($entry->owner, $entry->repo, $target->ref, $zipPath);
+        } catch (GithubDownloadException $e) {
+            @unlink($zipPath);
+            Log::warning('ModuleManager update download failed: ' . $e->getMessage());
+            return redirect()->back()->withErrors(['update' => $e->getMessage()]);
+        }
+
+        return $this->installFromZip($zipPath, function (InstallResult $result) use ($entry, $target) {
+            $this->afterSuccessfulUpdate($result, $entry, $target);
+
+            return redirect()->back()->with('success', __('Updated :name to :label.', ['name' => $entry->label, 'label' => $target->label]));
+        });
+    }
+
+    private function afterSuccessfulUpdate(InstallResult $result, SavedRepo $entry, UpdateTarget $target): void
+    {
+        if ($result->folder !== null) {
+            $this->repoStore->markInstalled($entry->id, $result->alias, $result->folder);
+        }
+
+        $this->repoStore->markUpdated($entry->id, $target, now()->toIso8601String());
+
+        $this->clearCaches();
+
+        Log::info('ModuleManager updated module: ' . $result->alias . ' to ' . $target->ref);
     }
 
     /**

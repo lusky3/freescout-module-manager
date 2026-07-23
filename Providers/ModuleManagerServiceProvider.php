@@ -14,6 +14,7 @@ use Modules\ModuleManager\Services\SavedRepoStore;
 use Modules\ModuleManager\Services\Support\LaravelOptionStore;
 use Modules\ModuleManager\Services\Support\OptionStoreInterface;
 use Modules\ModuleManager\Services\Support\SettingsErrorPresenter;
+use Modules\ModuleManager\Services\UpdateChecker;
 use Modules\ModuleManager\Services\ZipModuleExtractor;
 
 class ModuleManagerServiceProvider extends ServiceProvider
@@ -60,6 +61,10 @@ class ModuleManagerServiceProvider extends ServiceProvider
 
         $this->app->bind(GithubRepoResolver::class, function () {
             return new GithubRepoResolver(new Client());
+        });
+
+        $this->app->bind(UpdateChecker::class, function () {
+            return new UpdateChecker(new Client());
         });
 
         $this->app->bind(ZipModuleExtractor::class, function () {

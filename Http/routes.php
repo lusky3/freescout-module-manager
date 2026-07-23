@@ -36,6 +36,14 @@ Route::group([
         'uses' => 'ModuleManagerController@installFromRepo',
     ])->name('modulemanager_install_repo')->where('id', '[0-9a-f]+');
 
+    Route::post('/app-settings/modulemanager/repos/{id}/check-update', [
+        'uses' => 'ModuleManagerController@checkForUpdate',
+    ])->name('modulemanager_check_update')->where('id', '[0-9a-f]+');
+
+    Route::post('/app-settings/modulemanager/repos/{id}/update', [
+        'uses' => 'ModuleManagerController@updateRepo',
+    ])->name('modulemanager_update_repo')->where('id', '[0-9a-f]+');
+
     Route::post('/app-settings/modulemanager/upload', [
         'uses' => 'ModuleManagerController@installFromUpload',
     ])->name('modulemanager_install_upload');
