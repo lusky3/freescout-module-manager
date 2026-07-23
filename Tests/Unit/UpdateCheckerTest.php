@@ -1,4 +1,5 @@
 <?php
+
 // Tests/Unit/UpdateCheckerTest.php
 
 namespace Tests\Unit;

@@ -1,4 +1,5 @@
 <?php
+
 // Services/Support/UpdateTarget.php
 
 namespace Modules\ModuleManager\Services\Support;

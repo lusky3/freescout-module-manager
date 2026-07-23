@@ -1,4 +1,5 @@
 <?php
+
 // Services/UpdateChecker.php
 
 namespace Modules\ModuleManager\Services;
