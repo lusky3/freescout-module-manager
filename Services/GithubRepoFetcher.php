@@ -56,6 +56,10 @@ class GithubRepoFetcher
                 // CurlFactory-driven handler only ever calls on_headers once
                 // actual response headers have arrived, so this guard is a
                 // no-op in production and only matters for the test double.
+                //
+                // This is a best-effort fast-path only: see the 'progress'
+                // callback below for the check that actually matters against
+                // real GitHub traffic.
                 'on_headers' => function ($response) use ($owner, $repo, $ref) {
                     if (!$response instanceof ResponseInterface) {
                         return;
@@ -66,13 +70,13 @@ class GithubRepoFetcher
                     // Fail open when Content-Length is absent. Verified against
                     // GitHub directly: github.com/.../archive/{ref}.zip 302s to
                     // codeload.github.com, which streams the generated archive
-                    // over HTTP/2 without ever sending a Content-Length header
-                    // (the zip is built on the fly, so its final size isn't known
-                    // upfront). Failing closed here would reject every real
-                    // GitHub download, defeating the feature. This check is a
-                    // best-effort guard for responses that do declare a length;
-                    // it is not a substitute for verifying the resulting file on
-                    // disk if a hard cap is needed on codeload's chunked path.
+                    // over chunked transfer without ever sending a
+                    // Content-Length header (the zip is built on the fly, so
+                    // its final size isn't known upfront). Failing closed here
+                    // would reject every real GitHub download, defeating the
+                    // feature. This is why this check alone is not sufficient —
+                    // see the 'progress' callback below, which is what actually
+                    // bounds codeload downloads.
                     if ($contentLength === '') {
                         return;
                     }
@@ -83,17 +87,56 @@ class GithubRepoFetcher
                         );
                     }
                 },
+                // The authoritative cap. codeload.github.com — what
+                // github.com/.../archive/{ref}.zip actually resolves to —
+                // streams generated archives with no Content-Length header at
+                // all (confirmed against the real endpoint), which makes the
+                // on_headers check above a no-op on the one code path that
+                // matters: $downloadTotal here will likewise be 0/unknown for
+                // that same reason. So this callback ignores $downloadTotal
+                // entirely and instead tracks $downloadedBytes — the actual
+                // number of bytes received so far, updated as the transfer
+                // streams in — aborting the moment it crosses the cap
+                // regardless of what (if anything) the server claimed about
+                // the total size. Guzzle propagates an exception thrown here
+                // the same way it does for on_headers: wrapped in a
+                // RequestException, caught below, and unwrapped back to this
+                // specific exception.
+                'progress' => function ($downloadTotal, $downloadedBytes) use ($owner, $repo, $ref) {
+                    if ($downloadedBytes > self::MAX_DOWNLOAD_BYTES) {
+                        throw new GithubDownloadException(
+                            "Refusing to download {$owner}/{$repo}@{$ref}: downloaded {$downloadedBytes} bytes, which exceeds the " . self::MAX_DOWNLOAD_BYTES . '-byte limit.'
+                        );
+                    }
+                },
             ]);
         } catch (GuzzleException $e) {
-            // If the on_headers callback above threw a GithubDownloadException
-            // (the size cap was exceeded), Guzzle wraps it in a RequestException
-            // with a generic message ("An error was encountered during the
-            // on_headers event") and stashes our original exception as the
-            // "previous" exception. Unwrap and rethrow it directly so callers
-            // see the specific, clear message instead of Guzzle's wrapper text.
-            $previous = $e->getPrevious();
-            if ($previous instanceof GithubDownloadException) {
-                throw $previous;
+            // If the on_headers or progress callback above threw a
+            // GithubDownloadException (the size cap was exceeded), Guzzle
+            // normally wraps it in a RequestException with a generic
+            // message ("An error was encountered during the
+            // on_headers/progress event") and stashes our original
+            // exception as the "previous" exception -- one level deep.
+            //
+            // But the depth isn't guaranteed: which underlying transport
+            // Guzzle picks depends on what's available in the PHP install
+            // (CurlHandler when the curl extension is loaded, StreamHandler
+            // otherwise), and StreamHandler's progress notifications fire
+            // from inside GuzzleHttp\Psr7\Stream::read(), which itself
+            // catches any \Exception escaping the notification (our
+            // GithubDownloadException is one) and re-wraps it as a plain
+            // RuntimeException('Unable to read from stream', 0, $e) before
+            // Guzzle's own RequestException wraps THAT -- two levels deep.
+            // Walk the full previous-exception chain rather than checking
+            // only one level, so callers see our specific, clear message
+            // regardless of which transport handled the request.
+            $previous = $e;
+            while ($previous !== null) {
+                if ($previous instanceof GithubDownloadException) {
+                    throw $previous;
+                }
+
+                $previous = $previous->getPrevious();
             }
 
             throw new GithubDownloadException(
