@@ -151,6 +151,16 @@ class ModuleManagerController extends Controller
         return $this->installFromZip($zipPath, function (InstallResult $result) use ($entry) {
             $this->afterSuccessfulInstall($result, $entry->id);
 
+            try {
+                $target = $this->updateChecker->findLatest($entry->owner, $entry->repo, $entry->ref);
+                $this->repoStore->markUpdated($entry->id, $target, now()->toIso8601String());
+            } catch (GithubDownloadException $e) {
+                // Best-effort: failing to resolve the installed version shouldn't fail
+                // the install itself. The saved repo will just show "Not checked yet"
+                // until the next explicit "Check for Updates" click.
+                Log::warning('ModuleManager could not resolve installed version after install: ' . $e->getMessage());
+            }
+
             return redirect()->back()
                 ->with('success', __('Installed module: :name', ['name' => $result->name]))
                 ->with('warning', __('Please enable the module from the Modules page.'));
@@ -200,7 +210,7 @@ class ModuleManagerController extends Controller
             return redirect()->back()->withErrors(['update' => $e->getMessage()]);
         }
 
-        $this->repoStore->recordUpdateCheck($id, $target, now()->toIso8601String());
+        $this->repoStore->recordUpdateCheck($entry->id, $target, now()->toIso8601String());
 
         return redirect()->back()->with('success', __('Checked :label for updates.', ['label' => $entry->label]));
     }
