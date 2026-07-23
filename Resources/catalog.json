@@ -1,0 +1,58 @@
+[
+    {
+        "owner": "presswizards",
+        "repo": "FreeScoutGPT",
+        "ref": "main",
+        "name": "FreeScoutGPT",
+        "description": "Draft ChatGPT-powered replies and summaries inside conversations, with support for multiple models.",
+        "author_name": "5 Star Plugins",
+        "stars": 38,
+        "last_pushed_at": "2026-04-14T11:51:09Z",
+        "license": "MIT",
+        "screenshot_url": null,
+        "reviewed_at": "2026-07-23",
+        "review_notes": "module.json and the main service provider read cleanly; no obfuscation or undisclosed outbound calls found. This free version's module.json links to a paid \"Pro\" upgrade at 5starplugins.com — that's disclosed here, not hidden in the code."
+    },
+    {
+        "owner": "avenjamin",
+        "repo": "freescout-Themes-Module",
+        "ref": "main",
+        "name": "Themes",
+        "description": "Adds a handful of custom color themes for the FreeScout admin UI.",
+        "author_name": "Ben Perry",
+        "stars": 14,
+        "last_pushed_at": "2026-07-16T07:08:47Z",
+        "license": "AGPL-3.0",
+        "screenshot_url": null,
+        "reviewed_at": "2026-07-23",
+        "review_notes": "Service provider only touches CSS/theme settings and writes its own compiled stylesheet to its own Public/css directory. No network calls, no obfuscation."
+    },
+    {
+        "owner": "darktohka",
+        "repo": "FreescoutDiscordModule",
+        "ref": "master",
+        "name": "Discord Notifications",
+        "description": "Posts new-ticket and customer-reply notifications to a Discord channel through a webhook URL you configure.",
+        "author_name": null,
+        "stars": 10,
+        "last_pushed_at": "2026-07-15T01:33:36Z",
+        "license": null,
+        "screenshot_url": null,
+        "reviewed_at": "2026-07-23",
+        "review_notes": "The only outbound call is a curl POST to the admin-configured Discord webhook_url — that's the module's stated purpose, not a hidden call. No obfuscation. No license file in the repo at review time."
+    },
+    {
+        "owner": "avenjamin",
+        "repo": "freescout-Following-Module",
+        "ref": "main",
+        "name": "Following",
+        "description": "Adds a \"Following\" folder that lists conversations you've chosen to follow.",
+        "author_name": "Ben Perry",
+        "stars": 8,
+        "last_pushed_at": "2025-05-15T04:43:00Z",
+        "license": "AGPL-3.0",
+        "screenshot_url": null,
+        "reviewed_at": "2026-07-23",
+        "review_notes": "Pure database/folder-filtering logic, no network calls at all, no obfuscation."
+    }
+]
