@@ -12,6 +12,8 @@ Path traversal or symlink escapes in the ZIP extraction logic. Anything that let
 
 Malicious code inside a module you chose to install isn't a vulnerability in this tool. This tool's job is to extract ZIPs safely, not to audit what's inside them — see the README for that distinction.
 
+The module catalog on the settings page is static data shipped with this repo (`Resources/catalog.json`) — browsing or adding from it makes no network call beyond the two already listed above. If you find a catalog entry that looks unsafe despite its review notes, that's exactly the kind of thing this policy covers — report it the same way.
+
 ## Supported versions
 
 Whatever's on `main`. This is a small module maintained by one person; there's no LTS branch and no backport policy.

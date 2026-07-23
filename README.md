@@ -28,6 +28,13 @@ Paste a GitHub URL under "Add a Repository" and the owner, repo, branch, and nam
 
 `Resources/default-repos.json` ships with one entry, `nielspeen/AiAssistant`, as an example — look at it before installing, and look at anything else you add too. This tool checks that a ZIP is safe to extract. It doesn't check whether the code inside it is safe to run.
 
+
+## Module catalog
+
+The settings page also shows a catalog of pre-checked community modules you can add with one click instead of typing a URL or filling in four fields. Each entry was briefly reviewed for obvious red flags (obfuscated code, hidden network calls, that kind of thing) before being listed — that's not the same as a full audit, and it's not an endorsement. Read the repo yourself before installing anything from it. The catalog disclaimer on the page says the same thing; it's there because it's true, not as boilerplate.
+
+The catalog is a static file (`Resources/catalog.json`) shipped with this module, not a live lookup — adding an entry never talks to any server beyond what's already disclosed below. It's refreshed by re-running the curation workflow in `scripts/curate-catalog.workflow.js` and shipping the result through a normal reviewed PR, the same as any other change to this repo.
+
 ## Development
 
 Unit tests don't need a FreeScout instance:
