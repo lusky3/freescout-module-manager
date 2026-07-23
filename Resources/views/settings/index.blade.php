@@ -28,6 +28,83 @@
 @endif
 
 <div class="panel panel-default">
+    <div class="panel-heading">{{ __('Module Catalog') }}</div>
+    <div class="panel-body">
+        <div class="alert alert-warning" role="alert">
+            {{ __("These modules are written and maintained by other people, not this project. Being listed here means an automated review found nothing obviously malicious — not that the module is safe, well-maintained, or fit for your use case. Read the repo yourself before installing. You're choosing to run someone else's code inside your FreeScout instance; that's on you, not us.") }}
+        </div>
+
+        @if (count($catalog) > 0)
+            <input type="text" id="catalog-filter" class="form-control" style="margin-bottom: 15px;" placeholder="{{ __('Filter by name or description...') }}">
+        @endif
+
+        <div id="catalog-list">
+            @forelse ($catalog as $item)
+                @php
+                    // Plain destructuring alias, not presentation logic (see
+                    // Task 5 brief). Written as a block-style directive
+                    // rather than the inline single-line shorthand: this
+                    // Blade version's raw-PHP-block preprocessor pairs the
+                    // first opener it finds with the next closer anywhere
+                    // later in the whole template via a regex (it doesn't
+                    // know about per-block scoping) -- an unmatched inline
+                    // opener here would have been paired with the closer of
+                    // the unrelated raw-PHP block further down in the
+                    // "Install a Module" panel, swallowing everything in
+                    // between as unparsed raw PHP.
+                    $entry = $item['entry'];
+                @endphp
+                <div class="panel panel-default catalog-entry" data-catalog-search="{{ strtolower($entry->name . ' ' . $entry->description) }}">
+                    <div class="panel-body">
+                        <div class="row">
+                            @if ($entry->screenshotUrl)
+                                <div class="col-sm-3">
+                                    <img src="{{ $entry->screenshotUrl }}" loading="lazy" class="img-thumbnail" style="max-width: 100%;" alt="{{ __(':name screenshot', ['name' => $entry->name]) }}">
+                                </div>
+                            @endif
+                            <div class="{{ $entry->screenshotUrl ? 'col-sm-9' : 'col-sm-12' }}">
+                                <h4 style="margin-top: 0;">
+                                    <a href="{{ $entry->url() }}" target="_blank" rel="noopener noreferrer">{{ $entry->name }}</a>
+                                </h4>
+                                <p>{{ $entry->description }}</p>
+                                <p class="text-muted">
+                                    {{ __('By :author', ['author' => $entry->authorName ?: $entry->owner]) }}
+                                    &middot; <span class="glyphicon glyphicon-star" aria-hidden="true"></span> {{ $entry->stars }}
+                                    @if ($entry->lastPushedAt)
+                                        &middot; {{ __('Updated :date', ['date' => date('M j, Y', strtotime($entry->lastPushedAt))]) }}
+                                    @endif
+                                    @if ($entry->license)
+                                        &middot; {{ $entry->license }}
+                                    @endif
+                                </p>
+                                @if ($entry->reviewNotes)
+                                    <p class="text-muted"><small>{{ __('Review notes: :notes', ['notes' => $entry->reviewNotes]) }}</small></p>
+                                @endif
+
+                                @if ($item['already_saved'])
+                                    <span class="label label-default">{{ __('Already in your list') }}</span>
+                                @else
+                                    <form method="post" action="{{ route('modulemanager_add_repo') }}" style="display:inline">
+                                        {{ csrf_field() }}
+                                        <input type="hidden" name="owner" value="{{ $entry->owner }}">
+                                        <input type="hidden" name="repo" value="{{ $entry->repo }}">
+                                        <input type="hidden" name="ref" value="{{ $entry->ref }}">
+                                        <input type="hidden" name="label" value="{{ $entry->name }}">
+                                        <button type="submit" class="btn btn-sm btn-primary">{{ __('Add to my list') }}</button>
+                                    </form>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @empty
+                <p class="text-muted">{{ __('No catalog entries yet.') }}</p>
+            @endforelse
+        </div>
+    </div>
+</div>
+
+<div class="panel panel-default">
     <div class="panel-heading">{{ __('Saved GitHub Repositories') }}</div>
     <div class="panel-body">
         <div class="table-responsive">
@@ -301,5 +378,17 @@
             $tab.attr('aria-selected', 'true');
         });
     });
+
+    var catalogFilterInput = document.getElementById('catalog-filter');
+    if (catalogFilterInput) {
+        catalogFilterInput.addEventListener('input', function () {
+            var query = catalogFilterInput.value.toLowerCase();
+            var entries = document.querySelectorAll('.catalog-entry');
+            for (var i = 0; i < entries.length; i++) {
+                var haystack = entries[i].getAttribute('data-catalog-search') || '';
+                entries[i].style.display = haystack.indexOf(query) === -1 ? 'none' : '';
+            }
+        });
+    }
 })();
 </script>

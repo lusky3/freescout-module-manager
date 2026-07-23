@@ -10,6 +10,8 @@ Don't open a public issue for a security problem. If you already did, just flag 
 
 Path traversal or symlink escapes in the ZIP extraction logic. Anything that lets an unauthenticated or non-admin request reach the install, upload, remove, or add-repo endpoints. Requests going somewhere other than the intended `github.com/{owner}/{repo}/archive/{ref}.zip` download pattern or the `api.github.com/repos/{owner}/{repo}` metadata-lookup pattern. A way around the download or extraction size limits. A crafted GitHub URL that gets the URL parser to produce an owner/repo it shouldn't.
 
+The module catalog on the settings page is static data shipped with this repo (`Resources/catalog.json`) — browsing or adding from it makes no network call beyond the two already listed above. If you find a catalog entry that looks unsafe despite its review notes, that's exactly the kind of thing this policy covers — report it the same way.
+
 Malicious code inside a module you chose to install isn't a vulnerability in this tool. This tool's job is to extract ZIPs safely, not to audit what's inside them — see the README for that distinction.
 
 ## Supported versions

@@ -28,6 +28,26 @@ Paste a GitHub URL under "Add a Repository" and the owner, repo, branch, and nam
 
 `Resources/default-repos.json` ships with one entry, `nielspeen/AiAssistant`, as an example — look at it before installing, and look at anything else you add too. This tool checks that a ZIP is safe to extract. It doesn't check whether the code inside it is safe to run.
 
+## Module catalog
+
+The settings page also shows a catalog of pre-checked community modules you can add with one click instead of typing a URL or filling in four fields. Each entry was briefly reviewed for obvious red flags (obfuscated code, hidden network calls, that kind of thing) before being listed — that's not the same as a full audit, and it's not an endorsement. Read the repo yourself before installing anything from it. The catalog disclaimer on the page says the same thing; it's there because it's true, not as boilerplate.
+
+The catalog is a static file (`Resources/catalog.json`) shipped with this module, not a live lookup — adding an entry never talks to any server beyond what's already disclosed above. It's refreshed by re-running the curation workflow in `scripts/curate-catalog.workflow.js` and shipping the result through a normal reviewed PR, the same as any other change to this repo.
+
+### Refreshing the catalog
+
+Run the curation workflow (needs a Claude Code session with the Workflow tool and GitHub MCP access):
+
+```
+Workflow({ scriptPath: "scripts/curate-catalog.workflow.js" })
+```
+
+It returns a list of newly-found, safety-reviewed candidates. Read every one yourself before adding it
+— the workflow's review is the same "brief, not a full audit" check described in the catalog's own
+disclaimer, applied by an agent instead of a human, and it can be wrong. For each one you accept: fill
+in `reviewed_at` with today's date, add it to `Resources/catalog.json`, and open a PR the normal way.
+Never merge a catalog update without reading the diff.
+
 ## Development
 
 Unit tests don't need a FreeScout instance:
