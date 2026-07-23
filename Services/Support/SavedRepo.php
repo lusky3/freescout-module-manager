@@ -11,10 +11,19 @@ namespace Modules\ModuleManager\Services\Support;
  * the InstallResult value-object pattern already used elsewhere in this
  * module for exactly this kind of shape-sensitive data.
  *
+ * The constructor itself enforces the class's own invariant -- id/owner/
+ * repo/ref/label must be non-empty strings -- by throwing
+ * \InvalidArgumentException. This matters because SavedRepoStore::add()
+ * constructs a SavedRepo directly (`new SavedRepo(...)`), not via
+ * fromArray() below, so relying on fromArray() alone to guard the invariant
+ * would leave add() depending entirely on upstream Laravel validation to
+ * stay valid.
+ *
  * toArray()/fromArray() are the (de)serialization boundary for the
  * underlying `Option` JSON storage; fromArray() is also where malformed
- * stored data is rejected (returns null) so a corrupted entry degrades
- * gracefully instead of throwing.
+ * stored data is rejected (returns null, by catching the constructor's
+ * \InvalidArgumentException) so a corrupted entry degrades gracefully
+ * instead of throwing.
  */
 class SavedRepo
 {
@@ -28,6 +37,10 @@ class SavedRepo
     public ?string $installedAlias;
     public ?string $installedFolder;
 
+    /**
+     * @throws \InvalidArgumentException if id/owner/repo/ref/label is not a
+     *     non-empty string.
+     */
     public function __construct(
         string $id,
         string $owner,
@@ -37,6 +50,14 @@ class SavedRepo
         ?string $installedAlias = null,
         ?string $installedFolder = null
     ) {
+        $values = compact('id', 'owner', 'repo', 'ref', 'label');
+
+        foreach (self::REQUIRED_STRING_KEYS as $key) {
+            if ($values[$key] === '') {
+                throw new \InvalidArgumentException("SavedRepo: '{$key}' must be a non-empty string.");
+            }
+        }
+
         $this->id = $id;
         $this->owner = $owner;
         $this->repo = $repo;
@@ -63,6 +84,13 @@ class SavedRepo
      * Validates and builds a SavedRepo from a decoded storage entry.
      * Returns null (instead of throwing) for anything malformed, so a
      * single corrupted stored entry doesn't take down the whole list.
+     *
+     * The isset()/is_string()/empty-string checks below are still done
+     * here (rather than leaning solely on the constructor's own
+     * InvalidArgumentException) because $data may be missing required
+     * keys entirely or have the wrong type -- the constructor's parameter
+     * types only guard against empty *strings*, not against, say, a
+     * missing 'owner' key or an 'owner' that decoded as an int.
      */
     public static function fromArray(array $data): ?self
     {
@@ -83,14 +111,18 @@ class SavedRepo
             return null;
         }
 
-        return new self(
-            $data['id'],
-            $data['owner'],
-            $data['repo'],
-            $data['ref'],
-            $data['label'],
-            $installedAlias !== null && $installedAlias !== '' ? $installedAlias : null,
-            $installedFolder !== null && $installedFolder !== '' ? $installedFolder : null
-        );
+        try {
+            return new self(
+                $data['id'],
+                $data['owner'],
+                $data['repo'],
+                $data['ref'],
+                $data['label'],
+                $installedAlias !== null && $installedAlias !== '' ? $installedAlias : null,
+                $installedFolder !== null && $installedFolder !== '' ? $installedFolder : null
+            );
+        } catch (\InvalidArgumentException $e) {
+            return null;
+        }
     }
 }

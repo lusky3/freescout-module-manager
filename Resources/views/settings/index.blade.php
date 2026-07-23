@@ -1,5 +1,5 @@
 @if ($generalErrorKeys->isNotEmpty())
-    <div class="alert alert-danger alert-dismissible">
+    <div class="alert alert-danger alert-dismissible" role="alert">
         <button type="button" class="close" data-dismiss="alert" aria-label="{{ __('Close') }}"><span aria-hidden="true">&times;</span></button>
         <ul class="mb-0">
             @foreach ($generalErrorKeys as $errorKey)
@@ -12,13 +12,13 @@
 @endif
 
 @if (session('success'))
-    <div class="alert alert-success alert-dismissible">
+    <div class="alert alert-success alert-dismissible" role="alert" aria-live="polite">
         <button type="button" class="close" data-dismiss="alert" aria-label="{{ __('Close') }}"><span aria-hidden="true">&times;</span></button>
         {{ session('success') }}
     </div>
 @endif
 @if (session('warning'))
-    <div class="alert alert-warning alert-dismissible">
+    <div class="alert alert-warning alert-dismissible" role="alert">
         <button type="button" class="close" data-dismiss="alert" aria-label="{{ __('Close') }}"><span aria-hidden="true">&times;</span></button>
         {{ session('warning') }}
         <a href="{{ url('/modules/list') }}" class="btn btn-xs btn-default" style="margin-left: 10px;">
@@ -47,6 +47,7 @@
                                 {{ $repo->label }}
                                 @if ($repo->installedFolder && is_dir(base_path('Modules/'.$repo->installedFolder)))
                                     <span class="label label-success">
+                                        <span class="glyphicon glyphicon-ok" aria-hidden="true"></span>
                                         @if ($repo->installedAlias)
                                             {{ __('Installed as :alias', ['alias' => $repo->installedAlias]) }}
                                         @else
@@ -98,12 +99,21 @@
                     {{ csrf_field() }}
                     <div class="row">
                         @php
-                            $repoFormFields = [
-                                ['name' => 'owner', 'label' => __('GitHub owner'), 'placeholder' => __('e.g. octocat'), 'colClass' => 'col-md-3', 'default' => ''],
-                                ['name' => 'repo', 'label' => __('Repository name'), 'placeholder' => __('e.g. AiAssistant'), 'colClass' => 'col-md-3', 'default' => ''],
-                                ['name' => 'ref', 'label' => __('Branch or tag'), 'placeholder' => null, 'colClass' => 'col-md-2', 'default' => 'main'],
-                                ['name' => 'label', 'label' => __('Display name'), 'placeholder' => __('e.g. AI Assistant'), 'colClass' => 'col-md-3', 'default' => ''],
+                            // $addRepoFields (from ModuleManagerServiceProvider::registerViewComposer(),
+                            // backed by SettingsErrorPresenter::REPO_FIELDS) is the single
+                            // source of truth for which add-repo fields exist and in what
+                            // order -- this map only supplies each one's *display* metadata,
+                            // which necessarily has to be spelled out somewhere regardless of
+                            // where the field list itself lives.
+                            $repoFieldMeta = [
+                                'owner' => ['label' => __('GitHub owner'), 'placeholder' => __('e.g. octocat'), 'colClass' => 'col-md-3', 'default' => ''],
+                                'repo' => ['label' => __('Repository name'), 'placeholder' => __('e.g. AiAssistant'), 'colClass' => 'col-md-3', 'default' => ''],
+                                'ref' => ['label' => __('Branch or tag'), 'placeholder' => null, 'colClass' => 'col-md-2', 'default' => 'main'],
+                                'label' => ['label' => __('Display name'), 'placeholder' => __('e.g. AI Assistant'), 'colClass' => 'col-md-3', 'default' => ''],
                             ];
+                            $repoFormFields = array_map(function ($fieldName) use ($repoFieldMeta) {
+                                return array_merge(['name' => $fieldName], $repoFieldMeta[$fieldName]);
+                            }, $addRepoFields);
                         @endphp
                         @foreach ($repoFormFields as $field)
                             <div class="col-xs-12 col-sm-6 {{ $field['colClass'] }}">
@@ -188,7 +198,17 @@
         }
 
         if (target.getAttribute('data-confirm-armed') === '1') {
-            // Second click while armed: let it proceed to submit.
+            // Second (confirming) click while armed: cancel the pending
+            // auto-revert timeout before letting this proceed to submit.
+            // Without this, a confirmed submit that takes >=3s to respond
+            // would have the timeout fire mid-flight and visually revert
+            // the button's text/class back to "Remove" while the button is
+            // actually still disabled and the request is still in flight --
+            // the label would contradict the real state.
+            if (target._confirmRevertTimeoutId) {
+                clearTimeout(target._confirmRevertTimeoutId);
+                target._confirmRevertTimeoutId = null;
+            }
             return;
         }
 
@@ -200,7 +220,8 @@
         target.classList.add('btn-danger');
         target.textContent = confirmMessage;
 
-        setTimeout(function () {
+        target._confirmRevertTimeoutId = setTimeout(function () {
+            target._confirmRevertTimeoutId = null;
             target.removeAttribute('data-confirm-armed');
             target.classList.remove('btn-danger');
             target.textContent = target.getAttribute('data-original-text');

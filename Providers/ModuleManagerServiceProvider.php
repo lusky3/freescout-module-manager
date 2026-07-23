@@ -11,6 +11,7 @@ use Modules\ModuleManager\Services\GithubRepoFetcher;
 use Modules\ModuleManager\Services\SavedRepoStore;
 use Modules\ModuleManager\Services\Support\LaravelOptionStore;
 use Modules\ModuleManager\Services\Support\OptionStoreInterface;
+use Modules\ModuleManager\Services\Support\SettingsErrorPresenter;
 use Modules\ModuleManager\Services\ZipModuleExtractor;
 
 class ModuleManagerServiceProvider extends ServiceProvider
@@ -126,55 +127,65 @@ class ModuleManagerServiceProvider extends ServiceProvider
         }, 20, 2);
     }
 
+    /**
+     * Registers the view composer for the settings page as a flat sequence
+     * of named steps -- each one delegated to its own method below -- rather
+     * than inlining all of it into one closure. The four things this used to
+     * do in one place (trigger DefaultRepoSeeder's side effect, fetch the
+     * saved-repo list, and compute the general-error/first-invalid-field/
+     * active-tab view data) are unrelated to each other and each earns its
+     * own name.
+     */
     protected function registerViewComposer()
     {
         \View::composer('modulemanager::settings.index', function ($view) {
-            $seeder = app(DefaultRepoSeeder::class);
-            $seeder->seedIfNeeded();
+            $this->seedDefaultRepos();
 
-            $store = app(SavedRepoStore::class);
-
-            // NOTE: $view->errors (or $view['errors']) is *not* usable here.
-            // Laravel's ShareErrorsFromSession middleware (part of the 'web'
-            // group in Http/Kernel.php, confirmed to run ahead of this
-            // route) does `View::share('errors', ...)`, but
-            // Illuminate\View\View only merges the Factory's shared data
-            // into its own $data inside gatherData() -- called from
-            // renderContents() *after* Factory::callComposer() runs (see
-            // vendor/laravel/framework .../View/View.php). So at the point
-            // this composer closure executes, $view's own data does not yet
-            // contain 'errors'. Pulling it straight from the Factory's
-            // shared pool via View::shared() (already populated by the
-            // middleware, which always runs before the controller/view for
-            // this route) is what actually works reliably; verified against
-            // the live Docker instance by triggering validation errors on
-            // both the add-repo and upload forms.
-            $errors = \View::shared('errors', new ViewErrorBag());
-
-            $handledErrorFields = ['owner', 'repo', 'ref', 'label', 'module_zip'];
-            $generalErrorKeys = collect($errors->keys())->diff($handledErrorFields);
-
-            $firstInvalidRepoField = null;
-            foreach (['owner', 'repo', 'ref', 'label'] as $repoField) {
-                if ($errors->has($repoField)) {
-                    $firstInvalidRepoField = $repoField;
-                    break;
-                }
-            }
-
-            // After a redirect-with-errors, the page reloads and BS3's tab
-            // plugin has no client-side memory of which tab was open.
-            // Compute the correct tab server-side so an upload-specific
-            // error is never left stranded inside a hidden inactive
-            // tab-pane.
-            $activeInstallTab = $errors->has('module_zip') ? 'upload' : 'github';
+            $errorKeys = $this->currentErrorKeys();
 
             $view->with([
-                'repos' => $store->all(),
-                'generalErrorKeys' => $generalErrorKeys,
-                'firstInvalidRepoField' => $firstInvalidRepoField,
-                'activeInstallTab' => $activeInstallTab,
+                'repos' => $this->savedRepos(),
+                'addRepoFields' => SettingsErrorPresenter::REPO_FIELDS,
+                'generalErrorKeys' => collect(SettingsErrorPresenter::generalErrorKeys($errorKeys)),
+                'firstInvalidRepoField' => SettingsErrorPresenter::firstInvalidRepoField($errorKeys),
+                'activeInstallTab' => SettingsErrorPresenter::activeInstallTab($errorKeys),
             ]);
         });
+    }
+
+    private function seedDefaultRepos(): void
+    {
+        app(DefaultRepoSeeder::class)->seedIfNeeded();
+    }
+
+    /** @return \Modules\ModuleManager\Services\Support\SavedRepo[] */
+    private function savedRepos(): array
+    {
+        return app(SavedRepoStore::class)->all();
+    }
+
+    /**
+     * @return string[]
+     */
+    private function currentErrorKeys(): array
+    {
+        // NOTE: $view->errors (or $view['errors']) is *not* usable here.
+        // Laravel's ShareErrorsFromSession middleware (part of the 'web'
+        // group in Http/Kernel.php, confirmed to run ahead of this
+        // route) does `View::share('errors', ...)`, but
+        // Illuminate\View\View only merges the Factory's shared data
+        // into its own $data inside gatherData() -- called from
+        // renderContents() *after* Factory::callComposer() runs (see
+        // vendor/laravel/framework .../View/View.php). So at the point
+        // this composer closure executes, $view's own data does not yet
+        // contain 'errors'. Pulling it straight from the Factory's
+        // shared pool via View::shared() (already populated by the
+        // middleware, which always runs before the controller/view for
+        // this route) is what actually works reliably; verified against
+        // the live Docker instance by triggering validation errors on
+        // both the add-repo and upload forms.
+        $errors = \View::shared('errors', new ViewErrorBag());
+
+        return $errors->keys();
     }
 }

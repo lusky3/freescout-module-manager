@@ -27,11 +27,21 @@ class GithubRepoFetcher
 
     public function buildZipUrl(string $owner, string $repo, string $ref): string
     {
-        $owner = rawurlencode(trim($owner, '/'));
-        $repo = rawurlencode(trim($repo, '/'));
-        $ref = rawurlencode(trim($ref, '/'));
+        $owner = $this->sanitizeSegment($owner);
+        $repo = $this->sanitizeSegment($repo);
+        $ref = $this->sanitizeSegment($ref);
 
         return "https://github.com/{$owner}/{$repo}/archive/{$ref}.zip";
+    }
+
+    /**
+     * Trims stray leading/trailing slashes and percent-encodes a single URL
+     * path segment (owner, repo, or ref) for safe interpolation into the
+     * GitHub archive URL above.
+     */
+    private function sanitizeSegment(string $value): string
+    {
+        return rawurlencode(trim($value, '/'));
     }
 
     public function download(string $owner, string $repo, string $ref, string $destinationPath): void

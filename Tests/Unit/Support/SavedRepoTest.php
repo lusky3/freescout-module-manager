@@ -71,4 +71,61 @@ class SavedRepoTest extends TestCase
             'non-string installed_folder' => [['id' => 'x', 'owner' => 'a', 'repo' => 'b', 'ref' => 'c', 'label' => 'd', 'installed_folder' => 42]],
         ];
     }
+
+    /**
+     * The constructor enforces its own invariant directly -- it must not be
+     * possible to build an "empty" SavedRepo just by calling `new
+     * SavedRepo(...)` and skipping fromArray() (which is exactly what
+     * SavedRepoStore::add() does).
+     *
+     * @dataProvider emptyRequiredFieldProvider
+     */
+    public function test_constructor_rejects_empty_required_fields(array $args): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new SavedRepo(...$args);
+    }
+
+    public function emptyRequiredFieldProvider(): array
+    {
+        return [
+            'empty id' => [['', 'owner', 'repo', 'ref', 'label']],
+            'empty owner' => [['id', '', 'repo', 'ref', 'label']],
+            'empty repo' => [['id', 'owner', '', 'ref', 'label']],
+            'empty ref' => [['id', 'owner', 'repo', '', 'label']],
+            'empty label' => [['id', 'owner', 'repo', 'ref', '']],
+            'all empty' => [['', '', '', '', '']],
+        ];
+    }
+
+    public function test_constructor_accepts_all_non_empty_required_fields(): void
+    {
+        $repo = new SavedRepo('id', 'owner', 'repo', 'ref', 'label');
+
+        $this->assertSame('id', $repo->id);
+        $this->assertSame('owner', $repo->owner);
+        $this->assertSame('repo', $repo->repo);
+        $this->assertSame('ref', $repo->ref);
+        $this->assertSame('label', $repo->label);
+        $this->assertNull($repo->installedAlias);
+        $this->assertNull($repo->installedFolder);
+    }
+
+    public function test_from_array_returns_null_instead_of_throwing_when_construction_would_fail(): void
+    {
+        // Sanity check that fromArray()'s "return null on malformed data"
+        // contract holds even for the case the constructor itself now
+        // guards: fromArray()'s own pre-checks already reject this before
+        // ever reaching `new SavedRepo(...)`, but this proves the
+        // try/catch translation layer around the constructor call doesn't
+        // let an InvalidArgumentException escape if that ever changes.
+        $this->assertNull(SavedRepo::fromArray([
+            'id' => 'x',
+            'owner' => '',
+            'repo' => 'b',
+            'ref' => 'c',
+            'label' => 'd',
+        ]));
+    }
 }
