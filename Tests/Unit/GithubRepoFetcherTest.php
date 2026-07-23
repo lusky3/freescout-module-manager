@@ -170,17 +170,29 @@ class GithubRepoFetcherTest extends TestCase
     }
 
     /**
-     * Empirically verified gap this closes: codeload.github.com -- what
-     * github.com/{owner}/{repo}/archive/{ref}.zip actually redirects to --
-     * streams generated archives with no Content-Length header at all, so
-     * the on_headers/Content-Length check is a no-op on the only code path
-     * that matters in production. This test proves the fix against real
-     * GitHub infrastructure rather than a mock: it requests the real,
-     * multi-hundred-megabyte torvalds/linux archive (chosen because it is
-     * -- and, being an actively growing repository, will only remain --
-     * far larger than the 50MB cap) and asserts that the progress callback
-     * actually aborts the transfer partway through, using real bytes
-     * reported by curl over a real chunked-transfer HTTPS connection.
+     * This test proves the download cap against real GitHub infrastructure
+     * rather than a mock: it requests the real, multi-hundred-megabyte
+     * torvalds/linux archive (chosen because it is -- and, being an actively
+     * growing repository, will only remain -- far larger than the 50MB cap)
+     * and asserts that GithubRepoFetcher actually aborts the transfer.
+     *
+     * codeload.github.com does not deterministically pick one code path for
+     * this: confirmed live in CI, the *same* URL sometimes serves this
+     * archive with a Content-Length header (a cached copy whose exact size
+     * is already known) and sometimes without one (generated on the fly,
+     * streamed chunked). Each is a distinct, equally legitimate way for the
+     * cap to fire, with a different expected byte count on disk:
+     * - Content-Length present: the on_headers fast-path rejects the
+     *   archive before a single body byte streams. filesize() is 0 --
+     *   correctly, since nothing was ever written.
+     * - Content-Length absent: the progress callback aborts only after
+     *   real bytes have streamed close to the cap.
+     * Treating "0 bytes on disk" as a failure -- as an earlier version of
+     * this test did -- fails on the first code path even though the cap
+     * fired exactly as designed; the two GithubDownloadException messages
+     * are worded differently ("archive size (...)" vs. "downloaded (...)
+     * bytes, which"), so this test tells them apart and asserts the
+     * invariant that actually applies to whichever one fired.
      *
      * Requires outbound network access to github.com/codeload.github.com.
      * If that access is genuinely unavailable in the environment running
@@ -194,7 +206,7 @@ class GithubRepoFetcherTest extends TestCase
         if ($probe === false) {
             $this->markTestSkipped(
                 'Outbound network access to codeload.github.com is unavailable in this environment; '
-                . 'cannot verify the progress-based download cap against real GitHub infrastructure.'
+                . 'cannot verify the download cap against real GitHub infrastructure.'
             );
         }
 
@@ -206,46 +218,64 @@ class GithubRepoFetcherTest extends TestCase
             $fetcher->download('torvalds', 'linux', 'master', $destination);
             $this->fail('Expected downloading the real torvalds/linux archive to exceed the download cap and throw.');
         } catch (GithubDownloadException $e) {
-            if (strpos($e->getMessage(), 'exceeds the') === false) {
+            $message = $e->getMessage();
+
+            if (strpos($message, 'exceeds the') === false) {
                 // Not the cap firing -- almost certainly a real connectivity
                 // problem (DNS/timeout/etc.) rather than the behavior under
                 // test. Skip loudly with the real error rather than letting
                 // an unrelated network hiccup masquerade as a cap failure.
                 $this->markTestSkipped(
-                    'Could not reach the real GitHub codeload endpoint to verify the download cap: ' . $e->getMessage()
+                    'Could not reach the real GitHub codeload endpoint to verify the download cap: ' . $message
                 );
             }
 
+            // filesize() caches its result per path for the life of the
+            // process, and GithubRepoFetcher writes through a Guzzle-owned
+            // stream -- a different handle than whatever last stat'd this
+            // path -- so invalidate the cache before trusting the result.
+            clearstatcache(true, $destination);
             $downloadedBytes = filesize($destination);
 
             // Mirrors GithubRepoFetcher::MAX_DOWNLOAD_BYTES (private, so
             // duplicated here rather than reflected out) -- 50MB.
             $capBytes = 52428800;
 
-            // Proves the abort happened on real, actually-received bytes
-            // close to the cap -- not on a header, and not after only a
-            // trivial handful of bytes. Not asserted as "strictly greater
-            // than $capBytes": exactly how many bytes land in the sink
-            // before the abort is noticed depends on the buffering
-            // granularity of whichever transport handled the request (curl
-            // vs. PHP streams notify at different chunk boundaries), so a
-            // real download can land a small amount under the cap rather
-            // than exactly at or past it. A 90% threshold comfortably rules
-            // out "aborted almost immediately" while tolerating that
-            // transport-specific slack.
-            $this->assertGreaterThan(
-                (int) ($capBytes * 0.9),
-                $downloadedBytes,
-                'Expected close to MAX_DOWNLOAD_BYTES to have actually streamed to disk before the abort.'
-            );
-            // ...but well short of the real archive's full size (100MB+ at
-            // minimum; torvalds/linux only grows over time), proving the
-            // transfer was aborted partway through rather than completing.
-            $this->assertLessThan(
-                100 * 1024 * 1024,
-                $downloadedBytes,
-                'Expected the transfer to have aborted partway through, not completed.'
-            );
+            if (strpos($message, 'archive size (') !== false) {
+                // The on_headers fast-path fired: GitHub sent a
+                // Content-Length over the cap before any body byte arrived,
+                // so the transfer never started.
+                $this->assertSame(
+                    0,
+                    $downloadedBytes,
+                    'Expected the header-based fast-path to reject the archive before any bytes streamed.'
+                );
+            } else {
+                // The progress callback fired: no Content-Length was sent,
+                // so the cap only bit after real bytes had already
+                // streamed. Not asserted as "strictly greater than
+                // $capBytes": exactly how many bytes land in the sink
+                // before the abort is noticed depends on the buffering
+                // granularity of whichever transport handled the request,
+                // so a real download can land a small amount under the cap
+                // rather than exactly at or past it. A 90% threshold
+                // comfortably rules out "aborted almost immediately" while
+                // tolerating that transport-specific slack.
+                $this->assertGreaterThan(
+                    (int) ($capBytes * 0.9),
+                    $downloadedBytes,
+                    'Expected close to MAX_DOWNLOAD_BYTES to have actually streamed to disk before the abort.'
+                );
+                // ...but well short of the real archive's full size (100MB+
+                // at minimum; torvalds/linux only grows over time), proving
+                // the transfer was aborted partway through rather than
+                // completing.
+                $this->assertLessThan(
+                    100 * 1024 * 1024,
+                    $downloadedBytes,
+                    'Expected the transfer to have aborted partway through, not completed.'
+                );
+            }
         } finally {
             @unlink($destination);
         }
