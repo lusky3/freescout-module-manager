@@ -80,7 +80,15 @@ class ModuleManagerController extends Controller
         }
 
         $storageDir = $this->ensureStorageDir();
-        $zipPath = $storageDir . '/' . $entry->id . '.zip';
+        // Random suffix (same pattern as installFromUpload()'s upload_*
+        // filename) rather than a fixed name derived from $entry->id: two
+        // concurrent installs of the same saved repo (double-click, two
+        // admins) would otherwise write to and read from the identical
+        // file, and the unconditional cleanup unlink() below could delete
+        // one request's file out from under the other's still-in-flight
+        // download or extraction.
+        $zipName = 'repo_' . $entry->id . '_' . bin2hex(random_bytes(6)) . '.zip';
+        $zipPath = $storageDir . '/' . $zipName;
 
         try {
             $this->githubFetcher->download($entry->owner, $entry->repo, $entry->ref, $zipPath);

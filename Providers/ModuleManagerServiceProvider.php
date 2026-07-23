@@ -3,6 +3,7 @@
 namespace Modules\ModuleManager\Providers;
 
 use GuzzleHttp\Client;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\ViewErrorBag;
 use Modules\ModuleManager\Services\DefaultRepoSeeder;
@@ -16,6 +17,18 @@ class ModuleManagerServiceProvider extends ServiceProvider
 {
     public function register()
     {
+        // Eagerly create the storage directory that both SavedRepoStore's
+        // and DefaultRepoSeeder's lock files live in, so the lock is
+        // reliably present before any request can race on it. Previously
+        // this directory was only created lazily inside the controller's
+        // ensureStorageDir() (reached only by install/upload actions),
+        // which meant the very first time the settings page was ever
+        // opened -- before any install had run -- withLock() would find a
+        // missing directory, fopen() would fail, and locking would
+        // silently degrade to unlocked. That is exactly the moment two
+        // admins are most likely to race on DefaultRepoSeeder::seedIfNeeded().
+        $this->ensureLockDirectoryExists();
+
         $this->app->bind(OptionStoreInterface::class, LaravelOptionStore::class);
 
         $this->app->bind(SavedRepoStore::class, function ($app) {
@@ -29,7 +42,8 @@ class ModuleManagerServiceProvider extends ServiceProvider
             return new DefaultRepoSeeder(
                 $app->make(SavedRepoStore::class),
                 $app->make(OptionStoreInterface::class),
-                __DIR__ . '/../Resources/default-repos.json'
+                __DIR__ . '/../Resources/default-repos.json',
+                storage_path('app/modulemanager/default_repos_seed.lock')
             );
         });
 
@@ -52,6 +66,25 @@ class ModuleManagerServiceProvider extends ServiceProvider
 
         $this->registerSettingsSection();
         $this->registerViewComposer();
+    }
+
+    /**
+     * Best-effort; deliberately does not throw if this fails (e.g. a
+     * permissions problem) -- register() must not fail the whole app boot
+     * over a directory creation problem. withLock() (Services/Support/
+     * FileLockable) has its own fallback-and-log behavior for that case.
+     * $force=true (File::makeDirectory's 4th arg) suppresses the warning
+     * that would otherwise fire if two PHP-FPM workers both hit this at
+     * once and race on mkdir() -- register() runs on every request, not
+     * just once at app startup.
+     */
+    private function ensureLockDirectoryExists(): void
+    {
+        $storageDir = storage_path('app/modulemanager');
+
+        if (!File::isDirectory($storageDir)) {
+            File::makeDirectory($storageDir, 0775, true, true);
+        }
     }
 
     protected function registerSettingsSection()

@@ -2,11 +2,14 @@
 
 namespace Modules\ModuleManager\Services;
 
+use Modules\ModuleManager\Services\Support\FileLockable;
 use Modules\ModuleManager\Services\Support\OptionStoreInterface;
 use Modules\ModuleManager\Services\Support\SavedRepo;
 
 class SavedRepoStore
 {
+    use FileLockable;
+
     public const OPTION_KEY = 'modulemanager.saved_repos';
 
     private OptionStoreInterface $options;
@@ -48,7 +51,7 @@ class SavedRepoStore
 
     public function add(string $owner, string $repo, string $ref, string $label): SavedRepo
     {
-        return $this->withLock(function () use ($owner, $repo, $ref, $label) {
+        return $this->withLock($this->lockFilePath, function () use ($owner, $repo, $ref, $label) {
             $entries = $this->allRaw();
 
             $newRepo = new SavedRepo(bin2hex(random_bytes(8)), $owner, $repo, $ref, $label);
@@ -62,7 +65,7 @@ class SavedRepoStore
 
     public function remove(string $id): bool
     {
-        return $this->withLock(function () use ($id) {
+        return $this->withLock($this->lockFilePath, function () use ($id) {
             $entries = $this->allRaw();
 
             $filtered = array_values(array_filter($entries, function ($entry) use ($id) {
@@ -92,7 +95,7 @@ class SavedRepoStore
 
     public function markInstalled(string $id, string $alias, string $folder): bool
     {
-        return $this->withLock(function () use ($id, $alias, $folder) {
+        return $this->withLock($this->lockFilePath, function () use ($id, $alias, $folder) {
             $entries = $this->allRaw();
             $found = false;
 
@@ -125,36 +128,14 @@ class SavedRepoStore
 
     /**
      * Serializes add()/remove()/markInstalled() against each other with an
-     * application-level file lock. Option::get()/set() (FreeScout core) does
-     * an unlocked read-modify-write of the *entire* saved_repos array with no
-     * locking of its own, so two near-simultaneous requests -- necessarily
-     * separate PHP-FPM worker processes, not just separate threads of one
-     * process -- can each read the array, then write back their own modified
-     * copy, and the second write silently clobbers the first's change. An
-     * in-process mutex wouldn't help across worker processes; flock() over a
-     * shared lock file does.
-     *
-     * @return mixed
+     * application-level file lock (see FileLockable::withLock()).
+     * Option::get()/set() (FreeScout core) does an unlocked read-modify-write
+     * of the *entire* saved_repos array with no locking of its own, so two
+     * near-simultaneous requests -- necessarily separate PHP-FPM worker
+     * processes, not just separate threads of one process -- can each read
+     * the array, then write back their own modified copy, and the second
+     * write silently clobbers the first's change. An in-process mutex
+     * wouldn't help across worker processes; flock() over a shared lock file
+     * does.
      */
-    private function withLock(callable $callback)
-    {
-        $lockHandle = @fopen($this->lockFilePath, 'c');
-
-        if ($lockHandle === false) {
-            // Fall back to running unlocked rather than fatally erroring the
-            // whole request if the lock file's directory isn't writable.
-            // This preserves the pre-existing (unlocked) behavior in that
-            // edge case instead of introducing a brand new failure mode.
-            return $callback();
-        }
-
-        try {
-            flock($lockHandle, LOCK_EX);
-
-            return $callback();
-        } finally {
-            flock($lockHandle, LOCK_UN);
-            fclose($lockHandle);
-        }
-    }
 }
