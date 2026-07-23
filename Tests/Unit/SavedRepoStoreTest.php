@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use Modules\ModuleManager\Services\SavedRepoStore;
+use Modules\ModuleManager\Services\Support\UpdateTarget;
 use PHPUnit\Framework\TestCase;
 use Tests\Fixtures\FakeOptionStore;
 
@@ -120,5 +121,76 @@ class SavedRepoStoreTest extends TestCase
         $all = $store->all();
         $this->assertCount(1, $all);
         $this->assertSame('a1', $all[0]->id);
+    }
+
+    public function test_record_update_check_sets_latest_known_fields_and_returns_true(): void
+    {
+        $store = new SavedRepoStore(new FakeOptionStore());
+        $entry = $store->add('nielspeen', 'AiAssistant', 'main', 'AI Assistant');
+
+        $target = new UpdateTarget(UpdateTarget::MODE_COMMIT, 'abc123', 'commit abc123 on main', 'https://example.test/commit/abc123');
+
+        $this->assertTrue($store->recordUpdateCheck($entry->id, $target, '2026-07-23T12:00:00+00:00'));
+
+        $updated = $store->find($entry->id);
+        $this->assertSame('abc123', $updated->latestKnownRef);
+        $this->assertSame('commit abc123 on main', $updated->latestKnownLabel);
+        $this->assertSame('https://example.test/commit/abc123', $updated->latestKnownUrl);
+        $this->assertSame('2026-07-23T12:00:00+00:00', $updated->latestCheckedAt);
+        // recordUpdateCheck() never installs anything -- ref/installedCommitSha
+        // (what's actually on disk) must stay untouched.
+        $this->assertSame('main', $updated->ref);
+        $this->assertNull($updated->installedCommitSha);
+    }
+
+    public function test_record_update_check_returns_false_when_id_not_found(): void
+    {
+        $store = new SavedRepoStore(new FakeOptionStore());
+        $target = new UpdateTarget(UpdateTarget::MODE_COMMIT, 'abc123', 'commit abc123 on main', null);
+
+        $this->assertFalse($store->recordUpdateCheck('does-not-exist', $target, '2026-07-23T12:00:00+00:00'));
+    }
+
+    public function test_mark_updated_in_commit_mode_sets_installed_commit_sha_and_leaves_ref_alone(): void
+    {
+        $store = new SavedRepoStore(new FakeOptionStore());
+        $entry = $store->add('nielspeen', 'AiAssistant', 'main', 'AI Assistant');
+
+        $target = new UpdateTarget(UpdateTarget::MODE_COMMIT, 'def456', 'commit def456 on main', 'https://example.test/commit/def456');
+
+        $this->assertTrue($store->markUpdated($entry->id, $target, '2026-07-23T12:00:00+00:00'));
+
+        $updated = $store->find($entry->id);
+        $this->assertSame('main', $updated->ref);
+        $this->assertSame('def456', $updated->installedCommitSha);
+        $this->assertSame('def456', $updated->latestKnownRef);
+        $this->assertSame('commit def456 on main', $updated->latestKnownLabel);
+        $this->assertSame('https://example.test/commit/def456', $updated->latestKnownUrl);
+        $this->assertSame('2026-07-23T12:00:00+00:00', $updated->latestCheckedAt);
+        $this->assertFalse($updated->isUpdateAvailable());
+    }
+
+    public function test_mark_updated_in_tag_mode_replaces_ref_and_clears_installed_commit_sha(): void
+    {
+        $store = new SavedRepoStore(new FakeOptionStore());
+        $entry = $store->add('composer', 'composer', 'v2.10.0', 'Composer');
+
+        $target = new UpdateTarget(UpdateTarget::MODE_TAG, 'v2.10.2', 'v2.10.2', 'https://example.test/releases/tag/v2.10.2');
+
+        $this->assertTrue($store->markUpdated($entry->id, $target, '2026-07-23T12:00:00+00:00'));
+
+        $updated = $store->find($entry->id);
+        $this->assertSame('v2.10.2', $updated->ref);
+        $this->assertNull($updated->installedCommitSha);
+        $this->assertSame('v2.10.2', $updated->latestKnownRef);
+        $this->assertFalse($updated->isUpdateAvailable());
+    }
+
+    public function test_mark_updated_returns_false_when_id_not_found(): void
+    {
+        $store = new SavedRepoStore(new FakeOptionStore());
+        $target = new UpdateTarget(UpdateTarget::MODE_TAG, 'v1.0.0', 'v1.0.0', null);
+
+        $this->assertFalse($store->markUpdated('does-not-exist', $target, '2026-07-23T12:00:00+00:00'));
     }
 }
