@@ -6,6 +6,7 @@ use GuzzleHttp\Client;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\ViewErrorBag;
+use Modules\ModuleManager\Services\CatalogLoader;
 use Modules\ModuleManager\Services\DefaultRepoSeeder;
 use Modules\ModuleManager\Services\GithubRepoFetcher;
 use Modules\ModuleManager\Services\GithubRepoResolver;
@@ -47,6 +48,10 @@ class ModuleManagerServiceProvider extends ServiceProvider
                 __DIR__ . '/../Resources/default-repos.json',
                 storage_path('app/modulemanager/default_repos_seed.lock')
             );
+        });
+
+        $this->app->bind(CatalogLoader::class, function ($app) {
+            return new CatalogLoader(__DIR__ . '/../Resources/catalog.json');
         });
 
         $this->app->bind(GithubRepoFetcher::class, function () {
@@ -147,14 +152,16 @@ class ModuleManagerServiceProvider extends ServiceProvider
             $this->seedDefaultRepos();
 
             $errorKeys = $this->currentErrorKeys();
+            $savedRepoStore = app(SavedRepoStore::class);
 
             $view->with([
-                'repos' => $this->savedRepos(),
+                'repos' => $savedRepoStore->all(),
                 'addRepoFields' => SettingsErrorPresenter::REPO_FIELDS,
                 'generalErrorKeys' => collect(SettingsErrorPresenter::generalErrorKeys($errorKeys)),
                 'firstInvalidRepoField' => SettingsErrorPresenter::firstInvalidRepoField($errorKeys),
                 'githubUrlFieldHasError' => SettingsErrorPresenter::githubUrlFieldHasError($errorKeys),
                 'activeInstallTab' => SettingsErrorPresenter::activeInstallTab($errorKeys),
+                'catalog' => $this->catalogEntries($savedRepoStore),
             ]);
         });
     }
@@ -164,10 +171,28 @@ class ModuleManagerServiceProvider extends ServiceProvider
         app(DefaultRepoSeeder::class)->seedIfNeeded();
     }
 
-    /** @return \Modules\ModuleManager\Services\Support\SavedRepo[] */
-    private function savedRepos(): array
+    /**
+     * @return array<int, array{entry: \Modules\ModuleManager\Services\Support\CatalogEntry, already_saved: bool}>
+     */
+    private function catalogEntries(SavedRepoStore $savedRepoStore): array
     {
-        return app(SavedRepoStore::class)->all();
+        $loader = app(CatalogLoader::class);
+        $savedRepos = $savedRepoStore->all();
+
+        $result = [];
+        foreach ($loader->all() as $entry) {
+            $alreadySaved = false;
+            foreach ($savedRepos as $savedRepo) {
+                if ($entry->matchesSavedRepo($savedRepo)) {
+                    $alreadySaved = true;
+                    break;
+                }
+            }
+
+            $result[] = ['entry' => $entry, 'already_saved' => $alreadySaved];
+        }
+
+        return $result;
     }
 
     /**
