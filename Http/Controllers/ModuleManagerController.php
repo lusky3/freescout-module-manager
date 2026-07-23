@@ -141,7 +141,13 @@ class ModuleManagerController extends Controller
             return redirect()->back()->withErrors(['install' => $e->getMessage()]);
         }
 
-        return $this->installFromZip($zipPath, $entry->id);
+        return $this->installFromZip($zipPath, function (InstallResult $result) use ($entry) {
+            $this->afterSuccessfulInstall($result, $entry->id);
+
+            return redirect()->back()
+                ->with('success', __('Installed module: :name', ['name' => $result->name]))
+                ->with('warning', __('Please enable the module from the Modules page.'));
+        });
     }
 
     public function installFromUpload(Request $request)
@@ -163,17 +169,23 @@ class ModuleManagerController extends Controller
             return redirect()->back()->withErrors(['module_zip' => __('Could not save the uploaded file.')]);
         }
 
-        return $this->installFromZip($storageDir . '/' . $zipName);
+        return $this->installFromZip($storageDir . '/' . $zipName, function (InstallResult $result) {
+            $this->afterSuccessfulInstall($result, null);
+
+            return redirect()->back()
+                ->with('success', __('Installed module: :name', ['name' => $result->name]))
+                ->with('warning', __('Please enable the module from the Modules page.'));
+        });
     }
 
     /**
-     * Extracts the ZIP at $zipPath and builds the redirect response for it.
-     * The "what happens after a successful extraction" bookkeeping (marking
-     * a saved repo installed, clearing caches, logging) is intentionally
-     * pulled out into afterSuccessfulInstall() below, rather than inlined
-     * here.
+     * Extracts the ZIP at $zipPath and hands the resulting InstallResult to
+     * $onSuccess, which builds the final response -- what "success" means
+     * (which saved-repo bookkeeping to update, which flash message to
+     * show) differs per caller. Extraction failure and cleanup are handled
+     * once, here, regardless of which caller is asking.
      */
-    private function installFromZip(string $zipPath, ?string $savedRepoId = null)
+    private function installFromZip(string $zipPath, callable $onSuccess)
     {
         $result = $this->extractor->extract($zipPath);
 
@@ -183,11 +195,7 @@ class ModuleManagerController extends Controller
             return redirect()->back()->withErrors(['module' => $result->error]);
         }
 
-        $this->afterSuccessfulInstall($result, $savedRepoId);
-
-        return redirect()->back()
-            ->with('success', __('Installed module: :name', ['name' => $result->name]))
-            ->with('warning', __('Please enable the module from the Modules page.'));
+        return $onSuccess($result);
     }
 
     private function afterSuccessfulInstall(InstallResult $result, ?string $savedRepoId): void
