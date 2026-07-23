@@ -1,7 +1,5 @@
 <?php
 
-// Tests/Unit/UpdateCheckerTest.php
-
 namespace Tests\Unit;
 
 use GuzzleHttp\Client;

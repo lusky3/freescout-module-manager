@@ -1,7 +1,5 @@
 <?php
 
-// Services/UpdateChecker.php
-
 namespace Modules\ModuleManager\Services;
 
 use GuzzleHttp\ClientInterface;
