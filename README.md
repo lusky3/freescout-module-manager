@@ -34,6 +34,20 @@ The settings page also shows a catalog of pre-checked community modules you can 
 
 The catalog is a static file (`Resources/catalog.json`) shipped with this module, not a live lookup — adding an entry never talks to any server beyond what's already disclosed above. It's refreshed by re-running the curation workflow in `scripts/curate-catalog.workflow.js` and shipping the result through a normal reviewed PR, the same as any other change to this repo.
 
+### Refreshing the catalog
+
+Run the curation workflow (needs a Claude Code session with the Workflow tool and GitHub MCP access):
+
+```
+Workflow({ scriptPath: "scripts/curate-catalog.workflow.js" })
+```
+
+It returns a list of newly-found, safety-reviewed candidates. Read every one yourself before adding it
+— the workflow's review is the same "brief, not a full audit" check described in the catalog's own
+disclaimer, applied by an agent instead of a human, and it can be wrong. For each one you accept: fill
+in `reviewed_at` with today's date, add it to `Resources/catalog.json`, and open a PR the normal way.
+Never merge a catalog update without reading the diff.
+
 ## Development
 
 Unit tests don't need a FreeScout instance:
