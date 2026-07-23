@@ -24,6 +24,10 @@ Route::group([
         'uses' => 'ModuleManagerController@addRepo',
     ])->name('modulemanager_add_repo');
 
+    Route::post('/app-settings/modulemanager/repos/from-url', [
+        'uses' => 'ModuleManagerController@addRepoFromUrl',
+    ])->name('modulemanager_add_repo_from_url');
+
     Route::delete('/app-settings/modulemanager/repos/{id}', [
         'uses' => 'ModuleManagerController@removeRepo',
     ])->name('modulemanager_remove_repo')->where('id', '[0-9a-f]+');

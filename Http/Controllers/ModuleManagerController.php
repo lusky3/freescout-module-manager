@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Modules\ModuleManager\Services\Exceptions\GithubDownloadException;
 use Modules\ModuleManager\Services\GithubRepoFetcher;
+use Modules\ModuleManager\Services\GithubRepoResolver;
 use Modules\ModuleManager\Services\SavedRepoStore;
 use Modules\ModuleManager\Services\Support\InstallResult;
 use Modules\ModuleManager\Services\ZipModuleExtractor;
@@ -24,12 +25,19 @@ class ModuleManagerController extends Controller
 
     private GithubRepoFetcher $githubFetcher;
 
+    private GithubRepoResolver $githubResolver;
+
     private ZipModuleExtractor $extractor;
 
-    public function __construct(SavedRepoStore $repoStore, GithubRepoFetcher $githubFetcher, ZipModuleExtractor $extractor)
-    {
+    public function __construct(
+        SavedRepoStore $repoStore,
+        GithubRepoFetcher $githubFetcher,
+        GithubRepoResolver $githubResolver,
+        ZipModuleExtractor $extractor
+    ) {
         $this->repoStore = $repoStore;
         $this->githubFetcher = $githubFetcher;
+        $this->githubResolver = $githubResolver;
         $this->extractor = $extractor;
 
         // Structural admin gate: every action on this controller requires
@@ -59,6 +67,41 @@ class ModuleManagerController extends Controller
             $request->input('repo'),
             $request->input('ref'),
             $request->input('label'),
+        );
+
+        return redirect()->back()->with('success', __('Repository added.'));
+    }
+
+    /**
+     * Second, easier way to add a saved repo: paste a GitHub URL instead of
+     * filling in owner/repo/ref/label by hand. Resolves the URL against the
+     * real GitHub API (GithubRepoResolver::resolve()) and saves whatever it
+     * finds -- same storage, same success flash, same redirect target as
+     * addRepo() above, just a different (and for the common case, easier)
+     * way to arrive at the same four values.
+     */
+    public function addRepoFromUrl(Request $request)
+    {
+        $request->validate([
+            'github_url' => 'required|string|max:500',
+        ]);
+
+        try {
+            $resolved = $this->githubResolver->resolve($request->input('github_url'));
+        } catch (GithubDownloadException $e) {
+            // withInput(): unlike the $request->validate() failure above (which
+            // Laravel's own exception handler auto-flashes input for), this is
+            // a manually-caught exception -- redirect()->back() alone would
+            // otherwise silently drop the URL the admin just pasted, forcing
+            // them to retype it just to see/fix the error.
+            return redirect()->back()->withInput()->withErrors(['github_url' => $e->getMessage()]);
+        }
+
+        $this->repoStore->add(
+            $resolved['owner'],
+            $resolved['repo'],
+            $resolved['ref'],
+            $resolved['label'],
         );
 
         return redirect()->back()->with('success', __('Repository added.'));

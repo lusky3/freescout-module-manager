@@ -102,4 +102,42 @@ class SettingsErrorPresenterTest extends TestCase
     {
         $this->assertSame(['owner', 'repo', 'ref', 'label'], SettingsErrorPresenter::REPO_FIELDS);
     }
+
+    public function test_active_install_tab_stays_on_github_when_github_url_has_an_error(): void
+    {
+        $this->assertSame('github', SettingsErrorPresenter::activeInstallTab(['github_url']));
+    }
+
+    public function test_general_error_keys_excludes_the_github_url_field(): void
+    {
+        $this->assertSame(
+            ['install'],
+            SettingsErrorPresenter::generalErrorKeys(['github_url', 'install'])
+        );
+    }
+
+    public function test_github_url_field_has_error_is_false_when_no_errors(): void
+    {
+        $this->assertFalse(SettingsErrorPresenter::githubUrlFieldHasError([]));
+    }
+
+    public function test_github_url_field_has_error_is_false_for_unrelated_errors(): void
+    {
+        // In particular, an error on one of the manual REPO_FIELDS (a
+        // separate form on the same tab) must not be mistaken for a
+        // github_url error -- the two forms' autofocus handling must not
+        // cross-contaminate.
+        $errorKeys = ['owner', 'repo', 'ref', 'label', 'module_zip'];
+        $this->assertFalse(SettingsErrorPresenter::githubUrlFieldHasError($errorKeys));
+    }
+
+    public function test_github_url_field_has_error_is_true_when_present(): void
+    {
+        $this->assertTrue(SettingsErrorPresenter::githubUrlFieldHasError(['github_url']));
+    }
+
+    public function test_github_url_field_constant_is_github_url(): void
+    {
+        $this->assertSame('github_url', SettingsErrorPresenter::GITHUB_URL_FIELD);
+    }
 }

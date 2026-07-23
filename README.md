@@ -4,7 +4,7 @@ Installs FreeScout modules from a GitHub repo or an uploaded ZIP. No telemetry, 
 
 ## How it stays safe
 
-The only network call this module makes is a GET to `github.com/{owner}/{repo}/archive/{ref}.zip`, for a repo you added yourself — nothing routes through a server this project doesn't control. Every ZIP, whether it came from GitHub or a direct upload, gets checked for path traversal and a valid `module.json` before a single file is written to disk. MIT licensed.
+This module makes two kinds of network calls, both to GitHub and both for a repo you added yourself: a GET to `api.github.com/repos/{owner}/{repo}` when you add a repo by pasting its URL (to look up its default branch and name instead of making you type them in), and a GET to `github.com/{owner}/{repo}/archive/{ref}.zip` when you install it. Nothing routes through a server this project doesn't control. Every ZIP, whether it came from GitHub or a direct upload, gets checked for path traversal and a valid `module.json` before a single file is written to disk. MIT licensed.
 
 ## Requirements
 
@@ -24,7 +24,7 @@ Enable by name, not folder — that's how nwidart-modules resolves it here. Then
 
 ## Using it
 
-Add an owner, repo, and branch or tag under "Add a Repository," then hit Install on that row. Or skip GitHub entirely and upload a ZIP directly. Either way the module lands in `Modules/<alias>`, and you still need to enable it from FreeScout's own Modules page afterward.
+Paste a GitHub URL under "Add a Repository" and the owner, repo, branch, and name get filled in automatically from GitHub's API — that's the fast path for a public repo. Prefer typing the four fields by hand instead? Use the "Or add manually" form below it; that's also where you go for a private repo or anything the URL parser doesn't recognize. Either way, hit Install on the saved row once it's added. Or skip GitHub entirely and upload a ZIP directly. Whichever path you take, the module lands in `Modules/<alias>`, and you still need to enable it from FreeScout's own Modules page afterward.
 
 `Resources/default-repos.json` ships with one entry, `nielspeen/AiAssistant`, as an example — look at it before installing, and look at anything else you add too. This tool checks that a ZIP is safe to extract. It doesn't check whether the code inside it is safe to run.
 

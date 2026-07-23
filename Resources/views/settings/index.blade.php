@@ -95,6 +95,43 @@
 
         <div class="tab-content">
             <div id="install-tab-github" class="tab-pane fade {{ $activeInstallTab === 'github' ? 'in active' : '' }}" role="tabpanel" aria-labelledby="install-tab-github-tab" style="padding-top: 15px;">
+                <form method="post" action="{{ route('modulemanager_add_repo_from_url') }}">
+                    {{ csrf_field() }}
+                    <div class="row">
+                        <div class="col-xs-12 col-sm-8 col-md-9">
+                            <div class="form-group {{ $errors->has('github_url') ? 'has-error' : '' }}">
+                                <label for="add_repo_github_url">{{ __('GitHub URL') }}</label>
+                                <input
+                                    type="text"
+                                    id="add_repo_github_url"
+                                    name="github_url"
+                                    class="form-control"
+                                    placeholder="{{ __('e.g. https://github.com/octocat/Hello-World') }}"
+                                    value="{{ old('github_url') }}"
+                                    @if ($githubUrlFieldHasError) autofocus @endif
+                                    @if ($errors->has('github_url')) aria-invalid="true" aria-describedby="github_url-error" @endif
+                                    required
+                                >
+                                @if ($errors->has('github_url'))
+                                    <span class="help-block" id="github_url-error">{{ $errors->first('github_url') }}</span>
+                                @else
+                                    <span class="help-block">{{ __('Paste a repo link and the owner, repo, branch, and name will be filled in automatically.') }}</span>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="col-xs-12 col-sm-4 col-md-3">
+                            <div class="form-group">
+                                <label class="hidden-xs">&nbsp;</label>
+                                <button type="submit" class="btn btn-primary btn-block">{{ __('Add from URL') }}</button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+
+                <div style="margin: 20px 0; border-top: 1px solid #e5e5e5; padding-top: 15px;">
+                    <p class="text-muted">{{ __('Or add manually') }} <small>({{ __('for private repos, unusual setups, or to override what auto-detection would pick') }})</small></p>
+                </div>
+
                 <form method="post" action="{{ route('modulemanager_add_repo') }}">
                     {{ csrf_field() }}
                     <div class="row">

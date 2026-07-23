@@ -8,6 +8,7 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\ViewErrorBag;
 use Modules\ModuleManager\Services\DefaultRepoSeeder;
 use Modules\ModuleManager\Services\GithubRepoFetcher;
+use Modules\ModuleManager\Services\GithubRepoResolver;
 use Modules\ModuleManager\Services\SavedRepoStore;
 use Modules\ModuleManager\Services\Support\LaravelOptionStore;
 use Modules\ModuleManager\Services\Support\OptionStoreInterface;
@@ -50,6 +51,10 @@ class ModuleManagerServiceProvider extends ServiceProvider
 
         $this->app->bind(GithubRepoFetcher::class, function () {
             return new GithubRepoFetcher(new Client());
+        });
+
+        $this->app->bind(GithubRepoResolver::class, function () {
+            return new GithubRepoResolver(new Client());
         });
 
         $this->app->bind(ZipModuleExtractor::class, function () {
@@ -148,6 +153,7 @@ class ModuleManagerServiceProvider extends ServiceProvider
                 'addRepoFields' => SettingsErrorPresenter::REPO_FIELDS,
                 'generalErrorKeys' => collect(SettingsErrorPresenter::generalErrorKeys($errorKeys)),
                 'firstInvalidRepoField' => SettingsErrorPresenter::firstInvalidRepoField($errorKeys),
+                'githubUrlFieldHasError' => SettingsErrorPresenter::githubUrlFieldHasError($errorKeys),
                 'activeInstallTab' => SettingsErrorPresenter::activeInstallTab($errorKeys),
             ]);
         });
