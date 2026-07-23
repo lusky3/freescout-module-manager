@@ -6,7 +6,6 @@
     <file>Providers</file>
     <file>Services</file>
     <file>Tests</file>
-    <file>module.json</file>
 
     <arg name="extensions" value="php"/>
     <arg value="p"/>
