@@ -196,6 +196,112 @@ class ZipModuleExtractorTest extends TestCase
         $this->assertFileDoesNotExist($this->modulesDir . '/themes');
     }
 
+    /**
+     * The real zip-bomb PoC this project's threat model is concerned with:
+     * a hand-crafted archive whose central-directory metadata claims a tiny
+     * uncompressed size (so sumUncompressedSize()'s pre-extraction check
+     * sails past it) but whose actual DEFLATE stream decompresses to
+     * something far larger than the metadata claims. ZipArchive::statIndex()
+     * only ever reports the archive's own claimed metadata -- it never
+     * verifies it against the real compressed stream -- so extractTo()
+     * happily writes the real, large payload to disk, and this test proves
+     * ZipModuleExtractor's post-extraction, real-bytes-on-disk check is what
+     * actually catches it.
+     *
+     * The "real, large payload" is genuinely real: just over
+     * MAX_UNCOMPRESSED_BYTES of actual bytes are written to a source file on
+     * disk (in small buffered chunks, never held as one giant PHP string, to
+     * avoid tripping PHPUnit's memory_limit), added to the archive via
+     * addFile() (which streams from that source file rather than loading it
+     * into memory), and then the *claimed* uncompressed size in the
+     * resulting archive's central directory is patched down to 1 byte using
+     * the same raw byte-patching technique as
+     * test_rejects_zip_whose_claimed_uncompressed_size_exceeds_the_ceiling().
+     * All the bytes are identical ('A' repeated) specifically so the
+     * resulting ZIP still compresses down to a tiny file despite containing
+     * genuinely large content -- exactly the shape of a real zip bomb.
+     *
+     * Because the claimed size is forged small, the cheap pre-extraction
+     * check (sumUncompressedSize()) is guaranteed to pass; only the
+     * post-extraction check (measuring what extractTo() actually wrote) can
+     * catch this. This test's runtime and disk usage inherently reflect the
+     * production tradeoff documented in ZipModuleExtractor::extract() --
+     * there is a brief real disk-usage spike here too, cleaned up
+     * immediately after.
+     */
+    public function test_rejects_a_zip_bomb_whose_claimed_size_is_forged_small_but_actual_extracted_size_exceeds_the_ceiling(): void
+    {
+        $realSize = ZipModuleExtractor::MAX_UNCOMPRESSED_BYTES + (1024 * 1024);
+
+        $sourcePath = $this->workDir . '/bomb_source.bin';
+        $this->writeRepeatedByteFile($sourcePath, 'A', $realSize);
+
+        $zipPath = $this->workDir . '/fixture_bomb_real_' . bin2hex(random_bytes(4)) . '.zip';
+        $zip = new \ZipArchive();
+        $zip->open($zipPath, \ZipArchive::CREATE);
+        $zip->addFromString('themes/module.json', json_encode(['name' => 'Themes', 'alias' => 'themes']));
+        $zip->addFile($sourcePath, 'themes/payload.bin');
+        $zip->close();
+
+        // The source file was only needed as addFile()'s input; the archive
+        // now holds the (highly compressed, since it's all repeated bytes)
+        // result, so free the ~500MB source immediately rather than holding
+        // two large files on disk at once.
+        unlink($sourcePath);
+
+        $this->patchClaimedUncompressedSize($zipPath, 'themes/payload.bin', 1);
+
+        $extractor = new ZipModuleExtractor($this->modulesDir);
+        $result = $extractor->extract($zipPath);
+
+        $this->assertFalse($result->success);
+        $this->assertStringContainsString('too large', $result->error);
+        $this->assertFileDoesNotExist($this->modulesDir . '/themes');
+
+        // No trace of the (briefly, necessarily) extracted bomb should
+        // survive cleanup either.
+        $leftovers = glob($this->modulesDir . '/.staging-*');
+        $this->assertSame([], $leftovers, 'No .staging-* directory should remain after a rejected extraction.');
+    }
+
+    public function test_rejects_zip_with_too_many_entries(): void
+    {
+        $entries = [
+            'themes/module.json' => json_encode(['name' => 'Themes', 'alias' => 'themes']),
+        ];
+
+        for ($i = 0; $i <= ZipModuleExtractor::MAX_ENTRY_COUNT; $i++) {
+            $entries["themes/file{$i}.txt"] = '';
+        }
+
+        $zipPath = $this->buildZip($entries);
+
+        $extractor = new ZipModuleExtractor($this->modulesDir);
+        $result = $extractor->extract($zipPath);
+
+        $this->assertFalse($result->success);
+        $this->assertStringContainsString('too many entries', $result->error);
+        $this->assertFileDoesNotExist($this->modulesDir . '/themes');
+    }
+
+    public function test_allows_zip_with_entry_count_at_the_ceiling(): void
+    {
+        $entries = [
+            'themes/module.json' => json_encode(['name' => 'Themes', 'alias' => 'themes']),
+        ];
+
+        for ($i = 0; $i < ZipModuleExtractor::MAX_ENTRY_COUNT - 1; $i++) {
+            $entries["themes/file{$i}.txt"] = '';
+        }
+
+        $zipPath = $this->buildZip($entries);
+
+        $extractor = new ZipModuleExtractor($this->modulesDir);
+        $result = $extractor->extract($zipPath);
+
+        $this->assertTrue($result->success);
+    }
+
     public function test_rejects_zip_without_module_json(): void
     {
         $zipPath = $this->buildZip([
@@ -265,6 +371,22 @@ class ZipModuleExtractorTest extends TestCase
         $zip->addFromString($fakeEntryName, $actualContents);
         $zip->close();
 
+        $this->patchClaimedUncompressedSize($zipPath, $fakeEntryName, $fakeSize);
+
+        return $zipPath;
+    }
+
+    /**
+     * Patches $entryName's central-directory "uncompressed size" field (4
+     * bytes, little-endian, at offset 24 within the 46-byte fixed central
+     * directory header — see the ZIP APPNOTE spec) in the ZIP at $zipPath
+     * to claim $fakeSize bytes instead of whatever its real size is.
+     * ZipArchive's public API has no way to lie about an entry's size, so
+     * the only way to exercise a "claims a size that doesn't match reality"
+     * code path is to patch the raw archive bytes after the fact.
+     */
+    private function patchClaimedUncompressedSize(string $zipPath, string $entryName, int $fakeSize): void
+    {
         $raw = file_get_contents($zipPath);
         $patched = false;
         $offset = 0;
@@ -275,7 +397,7 @@ class ZipModuleExtractorTest extends TestCase
             $commentLen = unpack('v', substr($raw, $pos + 32, 2))[1];
             $name = substr($raw, $pos + 46, $nameLen);
 
-            if ($name === $fakeEntryName) {
+            if ($name === $entryName) {
                 $raw = substr_replace($raw, pack('V', $fakeSize), $pos + 24, 4);
                 $patched = true;
                 break;
@@ -285,12 +407,36 @@ class ZipModuleExtractorTest extends TestCase
         }
 
         if (!$patched) {
-            throw new \RuntimeException("Could not locate central directory entry for {$fakeEntryName} to patch.");
+            throw new \RuntimeException("Could not locate central directory entry for {$entryName} to patch.");
         }
 
         file_put_contents($zipPath, $raw);
+    }
 
-        return $zipPath;
+    /**
+     * Writes a file of exactly $size bytes, all set to $byte, to $path
+     * using small buffered writes rather than building one giant PHP
+     * string -- so tests can materialize genuinely large (hundreds-of-MB)
+     * fixture files without tripping PHPUnit's memory_limit.
+     */
+    private function writeRepeatedByteFile(string $path, string $byte, int $size): void
+    {
+        $chunkSize = 4 * 1024 * 1024;
+        $chunk = str_repeat($byte, $chunkSize);
+
+        $handle = fopen($path, 'wb');
+        if ($handle === false) {
+            throw new \RuntimeException("Could not open {$path} for writing.");
+        }
+
+        $remaining = $size;
+        while ($remaining > 0) {
+            $toWrite = min($chunkSize, $remaining);
+            fwrite($handle, $toWrite === $chunkSize ? $chunk : str_repeat($byte, $toWrite));
+            $remaining -= $toWrite;
+        }
+
+        fclose($handle);
     }
 
     /**

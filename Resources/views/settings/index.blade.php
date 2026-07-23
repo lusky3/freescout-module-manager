@@ -1,5 +1,5 @@
 @if ($generalErrorKeys->isNotEmpty())
-    <div class="alert alert-danger alert-dismissible">
+    <div class="alert alert-danger alert-dismissible" role="alert">
         <button type="button" class="close" data-dismiss="alert" aria-label="{{ __('Close') }}"><span aria-hidden="true">&times;</span></button>
         <ul class="mb-0">
             @foreach ($generalErrorKeys as $errorKey)
@@ -12,13 +12,13 @@
 @endif
 
 @if (session('success'))
-    <div class="alert alert-success alert-dismissible">
+    <div class="alert alert-success alert-dismissible" role="alert" aria-live="polite">
         <button type="button" class="close" data-dismiss="alert" aria-label="{{ __('Close') }}"><span aria-hidden="true">&times;</span></button>
         {{ session('success') }}
     </div>
 @endif
 @if (session('warning'))
-    <div class="alert alert-warning alert-dismissible">
+    <div class="alert alert-warning alert-dismissible" role="alert">
         <button type="button" class="close" data-dismiss="alert" aria-label="{{ __('Close') }}"><span aria-hidden="true">&times;</span></button>
         {{ session('warning') }}
         <a href="{{ url('/modules/list') }}" class="btn btn-xs btn-default" style="margin-left: 10px;">
@@ -47,6 +47,7 @@
                                 {{ $repo->label }}
                                 @if ($repo->installedFolder && is_dir(base_path('Modules/'.$repo->installedFolder)))
                                     <span class="label label-success">
+                                        <span class="glyphicon glyphicon-ok" aria-hidden="true"></span>
                                         @if ($repo->installedAlias)
                                             {{ __('Installed as :alias', ['alias' => $repo->installedAlias]) }}
                                         @else
@@ -94,16 +95,62 @@
 
         <div class="tab-content">
             <div id="install-tab-github" class="tab-pane fade {{ $activeInstallTab === 'github' ? 'in active' : '' }}" role="tabpanel" aria-labelledby="install-tab-github-tab" style="padding-top: 15px;">
+                <form method="post" action="{{ route('modulemanager_add_repo_from_url') }}">
+                    {{ csrf_field() }}
+                    <div class="row">
+                        <div class="col-xs-12 col-sm-8 col-md-9">
+                            <div class="form-group {{ $errors->has('github_url') ? 'has-error' : '' }}">
+                                <label for="add_repo_github_url">{{ __('GitHub URL') }}</label>
+                                <input
+                                    type="text"
+                                    id="add_repo_github_url"
+                                    name="github_url"
+                                    class="form-control"
+                                    placeholder="{{ __('e.g. https://github.com/octocat/Hello-World') }}"
+                                    value="{{ old('github_url') }}"
+                                    @if ($githubUrlFieldHasError) autofocus @endif
+                                    @if ($errors->has('github_url')) aria-invalid="true" aria-describedby="github_url-error" @endif
+                                    required
+                                >
+                                @if ($errors->has('github_url'))
+                                    <span class="help-block" id="github_url-error">{{ $errors->first('github_url') }}</span>
+                                @else
+                                    <span class="help-block">{{ __('Paste a repo link and the owner, repo, branch, and name will be filled in automatically.') }}</span>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="col-xs-12 col-sm-4 col-md-3">
+                            <div class="form-group">
+                                <label class="hidden-xs">&nbsp;</label>
+                                <button type="submit" class="btn btn-primary btn-block">{{ __('Add from URL') }}</button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+
+                <div style="margin: 20px 0; border-top: 1px solid #e5e5e5; padding-top: 15px;">
+                    <p class="text-muted">{{ __('Or add manually') }} <small>({{ __('for private repos, unusual setups, or to override what auto-detection would pick') }})</small></p>
+                </div>
+
                 <form method="post" action="{{ route('modulemanager_add_repo') }}">
                     {{ csrf_field() }}
                     <div class="row">
                         @php
-                            $repoFormFields = [
-                                ['name' => 'owner', 'label' => __('GitHub owner'), 'placeholder' => __('e.g. octocat'), 'colClass' => 'col-md-3', 'default' => ''],
-                                ['name' => 'repo', 'label' => __('Repository name'), 'placeholder' => __('e.g. AiAssistant'), 'colClass' => 'col-md-3', 'default' => ''],
-                                ['name' => 'ref', 'label' => __('Branch or tag'), 'placeholder' => null, 'colClass' => 'col-md-2', 'default' => 'main'],
-                                ['name' => 'label', 'label' => __('Display name'), 'placeholder' => __('e.g. AI Assistant'), 'colClass' => 'col-md-3', 'default' => ''],
+                            // $addRepoFields (from ModuleManagerServiceProvider::registerViewComposer(),
+                            // backed by SettingsErrorPresenter::REPO_FIELDS) is the single
+                            // source of truth for which add-repo fields exist and in what
+                            // order -- this map only supplies each one's *display* metadata,
+                            // which necessarily has to be spelled out somewhere regardless of
+                            // where the field list itself lives.
+                            $repoFieldMeta = [
+                                'owner' => ['label' => __('GitHub owner'), 'placeholder' => __('e.g. octocat'), 'colClass' => 'col-md-3', 'default' => ''],
+                                'repo' => ['label' => __('Repository name'), 'placeholder' => __('e.g. AiAssistant'), 'colClass' => 'col-md-3', 'default' => ''],
+                                'ref' => ['label' => __('Branch or tag'), 'placeholder' => null, 'colClass' => 'col-md-2', 'default' => 'main'],
+                                'label' => ['label' => __('Display name'), 'placeholder' => __('e.g. AI Assistant'), 'colClass' => 'col-md-3', 'default' => ''],
                             ];
+                            $repoFormFields = array_map(function ($fieldName) use ($repoFieldMeta) {
+                                return array_merge(['name' => $fieldName], $repoFieldMeta[$fieldName]);
+                            }, $addRepoFields);
                         @endphp
                         @foreach ($repoFormFields as $field)
                             <div class="col-xs-12 col-sm-6 {{ $field['colClass'] }}">
@@ -188,7 +235,17 @@
         }
 
         if (target.getAttribute('data-confirm-armed') === '1') {
-            // Second click while armed: let it proceed to submit.
+            // Second (confirming) click while armed: cancel the pending
+            // auto-revert timeout before letting this proceed to submit.
+            // Without this, a confirmed submit that takes >=3s to respond
+            // would have the timeout fire mid-flight and visually revert
+            // the button's text/class back to "Remove" while the button is
+            // actually still disabled and the request is still in flight --
+            // the label would contradict the real state.
+            if (target._confirmRevertTimeoutId) {
+                clearTimeout(target._confirmRevertTimeoutId);
+                target._confirmRevertTimeoutId = null;
+            }
             return;
         }
 
@@ -200,7 +257,8 @@
         target.classList.add('btn-danger');
         target.textContent = confirmMessage;
 
-        setTimeout(function () {
+        target._confirmRevertTimeoutId = setTimeout(function () {
+            target._confirmRevertTimeoutId = null;
             target.removeAttribute('data-confirm-armed');
             target.classList.remove('btn-danger');
             target.textContent = target.getAttribute('data-original-text');

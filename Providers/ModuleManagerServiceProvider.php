@@ -3,19 +3,34 @@
 namespace Modules\ModuleManager\Providers;
 
 use GuzzleHttp\Client;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\ViewErrorBag;
 use Modules\ModuleManager\Services\DefaultRepoSeeder;
 use Modules\ModuleManager\Services\GithubRepoFetcher;
+use Modules\ModuleManager\Services\GithubRepoResolver;
 use Modules\ModuleManager\Services\SavedRepoStore;
 use Modules\ModuleManager\Services\Support\LaravelOptionStore;
 use Modules\ModuleManager\Services\Support\OptionStoreInterface;
+use Modules\ModuleManager\Services\Support\SettingsErrorPresenter;
 use Modules\ModuleManager\Services\ZipModuleExtractor;
 
 class ModuleManagerServiceProvider extends ServiceProvider
 {
     public function register()
     {
+        // Eagerly create the storage directory that both SavedRepoStore's
+        // and DefaultRepoSeeder's lock files live in, so the lock is
+        // reliably present before any request can race on it. Previously
+        // this directory was only created lazily inside the controller's
+        // ensureStorageDir() (reached only by install/upload actions),
+        // which meant the very first time the settings page was ever
+        // opened -- before any install had run -- withLock() would find a
+        // missing directory, fopen() would fail, and locking would
+        // silently degrade to unlocked. That is exactly the moment two
+        // admins are most likely to race on DefaultRepoSeeder::seedIfNeeded().
+        $this->ensureLockDirectoryExists();
+
         $this->app->bind(OptionStoreInterface::class, LaravelOptionStore::class);
 
         $this->app->bind(SavedRepoStore::class, function ($app) {
@@ -29,12 +44,17 @@ class ModuleManagerServiceProvider extends ServiceProvider
             return new DefaultRepoSeeder(
                 $app->make(SavedRepoStore::class),
                 $app->make(OptionStoreInterface::class),
-                __DIR__ . '/../Resources/default-repos.json'
+                __DIR__ . '/../Resources/default-repos.json',
+                storage_path('app/modulemanager/default_repos_seed.lock')
             );
         });
 
         $this->app->bind(GithubRepoFetcher::class, function () {
             return new GithubRepoFetcher(new Client());
+        });
+
+        $this->app->bind(GithubRepoResolver::class, function () {
+            return new GithubRepoResolver(new Client());
         });
 
         $this->app->bind(ZipModuleExtractor::class, function () {
@@ -52,6 +72,25 @@ class ModuleManagerServiceProvider extends ServiceProvider
 
         $this->registerSettingsSection();
         $this->registerViewComposer();
+    }
+
+    /**
+     * Best-effort; deliberately does not throw if this fails (e.g. a
+     * permissions problem) -- register() must not fail the whole app boot
+     * over a directory creation problem. withLock() (Services/Support/
+     * FileLockable) has its own fallback-and-log behavior for that case.
+     * $force=true (File::makeDirectory's 4th arg) suppresses the warning
+     * that would otherwise fire if two PHP-FPM workers both hit this at
+     * once and race on mkdir() -- register() runs on every request, not
+     * just once at app startup.
+     */
+    private function ensureLockDirectoryExists(): void
+    {
+        $storageDir = storage_path('app/modulemanager');
+
+        if (!File::isDirectory($storageDir)) {
+            File::makeDirectory($storageDir, 0775, true, true);
+        }
     }
 
     protected function registerSettingsSection()
@@ -93,55 +132,66 @@ class ModuleManagerServiceProvider extends ServiceProvider
         }, 20, 2);
     }
 
+    /**
+     * Registers the view composer for the settings page as a flat sequence
+     * of named steps -- each one delegated to its own method below -- rather
+     * than inlining all of it into one closure. The four things this used to
+     * do in one place (trigger DefaultRepoSeeder's side effect, fetch the
+     * saved-repo list, and compute the general-error/first-invalid-field/
+     * active-tab view data) are unrelated to each other and each earns its
+     * own name.
+     */
     protected function registerViewComposer()
     {
         \View::composer('modulemanager::settings.index', function ($view) {
-            $seeder = app(DefaultRepoSeeder::class);
-            $seeder->seedIfNeeded();
+            $this->seedDefaultRepos();
 
-            $store = app(SavedRepoStore::class);
-
-            // NOTE: $view->errors (or $view['errors']) is *not* usable here.
-            // Laravel's ShareErrorsFromSession middleware (part of the 'web'
-            // group in Http/Kernel.php, confirmed to run ahead of this
-            // route) does `View::share('errors', ...)`, but
-            // Illuminate\View\View only merges the Factory's shared data
-            // into its own $data inside gatherData() -- called from
-            // renderContents() *after* Factory::callComposer() runs (see
-            // vendor/laravel/framework .../View/View.php). So at the point
-            // this composer closure executes, $view's own data does not yet
-            // contain 'errors'. Pulling it straight from the Factory's
-            // shared pool via View::shared() (already populated by the
-            // middleware, which always runs before the controller/view for
-            // this route) is what actually works reliably; verified against
-            // the live Docker instance by triggering validation errors on
-            // both the add-repo and upload forms.
-            $errors = \View::shared('errors', new ViewErrorBag());
-
-            $handledErrorFields = ['owner', 'repo', 'ref', 'label', 'module_zip'];
-            $generalErrorKeys = collect($errors->keys())->diff($handledErrorFields);
-
-            $firstInvalidRepoField = null;
-            foreach (['owner', 'repo', 'ref', 'label'] as $repoField) {
-                if ($errors->has($repoField)) {
-                    $firstInvalidRepoField = $repoField;
-                    break;
-                }
-            }
-
-            // After a redirect-with-errors, the page reloads and BS3's tab
-            // plugin has no client-side memory of which tab was open.
-            // Compute the correct tab server-side so an upload-specific
-            // error is never left stranded inside a hidden inactive
-            // tab-pane.
-            $activeInstallTab = $errors->has('module_zip') ? 'upload' : 'github';
+            $errorKeys = $this->currentErrorKeys();
 
             $view->with([
-                'repos' => $store->all(),
-                'generalErrorKeys' => $generalErrorKeys,
-                'firstInvalidRepoField' => $firstInvalidRepoField,
-                'activeInstallTab' => $activeInstallTab,
+                'repos' => $this->savedRepos(),
+                'addRepoFields' => SettingsErrorPresenter::REPO_FIELDS,
+                'generalErrorKeys' => collect(SettingsErrorPresenter::generalErrorKeys($errorKeys)),
+                'firstInvalidRepoField' => SettingsErrorPresenter::firstInvalidRepoField($errorKeys),
+                'githubUrlFieldHasError' => SettingsErrorPresenter::githubUrlFieldHasError($errorKeys),
+                'activeInstallTab' => SettingsErrorPresenter::activeInstallTab($errorKeys),
             ]);
         });
+    }
+
+    private function seedDefaultRepos(): void
+    {
+        app(DefaultRepoSeeder::class)->seedIfNeeded();
+    }
+
+    /** @return \Modules\ModuleManager\Services\Support\SavedRepo[] */
+    private function savedRepos(): array
+    {
+        return app(SavedRepoStore::class)->all();
+    }
+
+    /**
+     * @return string[]
+     */
+    private function currentErrorKeys(): array
+    {
+        // NOTE: $view->errors (or $view['errors']) is *not* usable here.
+        // Laravel's ShareErrorsFromSession middleware (part of the 'web'
+        // group in Http/Kernel.php, confirmed to run ahead of this
+        // route) does `View::share('errors', ...)`, but
+        // Illuminate\View\View only merges the Factory's shared data
+        // into its own $data inside gatherData() -- called from
+        // renderContents() *after* Factory::callComposer() runs (see
+        // vendor/laravel/framework .../View/View.php). So at the point
+        // this composer closure executes, $view's own data does not yet
+        // contain 'errors'. Pulling it straight from the Factory's
+        // shared pool via View::shared() (already populated by the
+        // middleware, which always runs before the controller/view for
+        // this route) is what actually works reliably; verified against
+        // the live Docker instance by triggering validation errors on
+        // both the add-repo and upload forms.
+        $errors = \View::shared('errors', new ViewErrorBag());
+
+        return $errors->keys();
     }
 }

@@ -8,15 +8,34 @@ class ZipModuleExtractor
 {
     /**
      * Ceiling on the total uncompressed size (bytes) of every entry in a
-     * module ZIP, checked before extraction. A small, highly-compressed
-     * archive can otherwise decompress to something enormous (a "zip
-     * bomb"), exhausting disk space. Set well above the controller's 50MB
-     * upload cap, since a legitimate module with a vendor/ directory of
-     * dependencies can reasonably uncompress to more than its compressed
-     * upload size, but still low enough to catch an actual high-ratio
-     * compression bomb.
+     * module ZIP. A small, highly-compressed archive can otherwise
+     * decompress to something enormous (a "zip bomb"), exhausting disk
+     * space. Set well above the controller's 50MB upload cap, since a
+     * legitimate module with a vendor/ directory of dependencies can
+     * reasonably uncompress to more than its compressed upload size, but
+     * still low enough to catch an actual high-ratio compression bomb.
+     *
+     * This is enforced twice: once cheaply pre-extraction via
+     * sumUncompressedSize() (which trusts the ZIP's own central-directory
+     * metadata and is a fast-path rejection for the common,
+     * non-adversarial case), and again authoritatively post-extraction via
+     * sumExtractedSize() (which measures real bytes written to disk,
+     * because central-directory metadata can be forged — see
+     * sumUncompressedSize()'s docblock).
      */
     public const MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024; // 500MB
+
+    /**
+     * Ceiling on the number of entries in a module ZIP. A legitimate module
+     * (code, assets, a vendor/ directory of dependencies) reasonably has at
+     * most a few thousand files. Nothing about the byte-size checks bounds
+     * *how many* entries make up that byte count, so a ZIP packed with
+     * millions of tiny or empty entries can pass those checks trivially
+     * while still exhausting inodes, disk space (each entry costs at least
+     * one filesystem block), or extraction time. Checked before extraction
+     * alongside the traversal/symlink/size checks.
+     */
+    public const MAX_ENTRY_COUNT = 5000;
 
     /**
      * POSIX S_IFMT: the bit-mask that isolates the file-type bits from a
@@ -57,6 +76,12 @@ class ZipModuleExtractor
         $destination = null;
 
         try {
+            if ($zip->numFiles > self::MAX_ENTRY_COUNT) {
+                return InstallResult::fail(
+                    'ZIP archive has too many entries (over ' . self::MAX_ENTRY_COUNT . '); refusing to extract.'
+                );
+            }
+
             $topFolder = $this->findSingleTopLevelFolder($zip);
             if ($topFolder === null) {
                 return InstallResult::fail('ZIP must contain exactly one top-level folder.');
@@ -117,6 +142,30 @@ class ZipModuleExtractor
             $this->removeDirectory($stagingDir);
 
             return InstallResult::fail('Could not extract ZIP archive.');
+        }
+
+        // Authoritative post-extraction size check. sumUncompressedSize()
+        // above only rejects the common, non-adversarial case: it trusts
+        // the "uncompressed size" field the ZIP itself declares in its
+        // central directory, which is attacker-controlled metadata, not a
+        // verified fact. A hand-crafted archive can declare a tiny size
+        // there while its DEFLATE stream actually decompresses to
+        // something enormous; extractTo() above writes that real, larger
+        // size to disk regardless of what the header claimed. PHP's
+        // ZipArchive exposes no byte-limited/streaming extraction API that
+        // would let us bound this proactively mid-extraction, so the only
+        // way to catch a forged-header bomb is to measure what actually
+        // landed on disk afterward and delete it if it's too big. This
+        // means a real bomb causes a brief disk-usage spike before cleanup
+        // rather than being stopped before a single byte is written — an
+        // acceptable tradeoff given there's no proactive alternative.
+        $actualExtractedSize = $this->sumExtractedSize($stagingDir);
+        if ($actualExtractedSize > self::MAX_UNCOMPRESSED_BYTES) {
+            $this->removeDirectory($stagingDir);
+
+            return InstallResult::fail(
+                'Extracted ZIP contents are too large (over ' . self::MAX_UNCOMPRESSED_BYTES . ' bytes); refusing to install.'
+            );
         }
 
         // Atomically move the extracted module folder into place. rename() on
@@ -230,9 +279,16 @@ class ZipModuleExtractor
 
     /**
      * Sums the uncompressed size of every entry as reported by the ZIP's
-     * own metadata (statIndex), without extracting anything. This is the
-     * cheap check that stands between a small, highly-compressed archive
-     * and a disk-exhausting extraction.
+     * own metadata (statIndex), without extracting anything. This is a
+     * cheap, fast-path rejection for the common, non-adversarial case —
+     * but the "size" statIndex() reports comes straight from the archive's
+     * own central directory headers, which are just bytes the archive's
+     * creator wrote and fully controls. A hand-crafted ZIP can declare a
+     * tiny size here while its actual DEFLATE stream decompresses to
+     * something far larger, so this check alone must never be relied on
+     * to bound disk usage. See extract()'s post-extraction
+     * sumExtractedSize() call for the authoritative check against real
+     * bytes written to disk.
      */
     private function sumUncompressedSize(\ZipArchive $zip): int
     {
@@ -245,6 +301,35 @@ class ZipModuleExtractor
             }
 
             $total += $stat['size'];
+        }
+
+        return $total;
+    }
+
+    /**
+     * Sums the real, on-disk size of every regular file under $dir by
+     * walking the actual filesystem — as opposed to sumUncompressedSize(),
+     * which sums numbers the ZIP claims about itself. This is the
+     * authoritative check: it reflects exactly what extraction wrote,
+     * regardless of what the archive's central directory said it would
+     * write.
+     */
+    private function sumExtractedSize(string $dir): int
+    {
+        if (!is_dir($dir)) {
+            return 0;
+        }
+
+        $total = 0;
+
+        $items = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($items as $item) {
+            if ($item->isFile() && !$item->isLink()) {
+                $total += $item->getSize();
+            }
         }
 
         return $total;
