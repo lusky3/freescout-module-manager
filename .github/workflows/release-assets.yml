@@ -32,6 +32,15 @@ jobs:
           set -e
           tag_version="${TAG_NAME#v}"
           json_version=$(jq -r .version module.json)
+          version_pattern='^[0-9]+\.[0-9]+\.[0-9]+$'
+          if ! [[ "$tag_version" =~ $version_pattern ]]; then
+            echo "::error::Release tag $TAG_NAME does not look like vX.Y.Z (got \"$tag_version\" after stripping the leading v)."
+            exit 1
+          fi
+          if ! [[ "$json_version" =~ $version_pattern ]]; then
+            echo "::error::module.json's version (\"$json_version\") is not a valid X.Y.Z dotted triple."
+            exit 1
+          fi
           if [ "$tag_version" != "$json_version" ]; then
             echo "::error::module.json version ($json_version) does not match release tag $TAG_NAME (expected $tag_version)."
             echo "Bump module.json's \"version\" field to $tag_version, commit it, and re-tag before publishing a release."
@@ -41,7 +50,7 @@ jobs:
       - name: Write version.json
         run: |
           tag_version="${TAG_NAME#v}"
-          printf '{"version":"%s"}\n' "$tag_version" > version.json
+          jq -n --arg version "$tag_version" '{version: $version}' > version.json
 
       # --prefix ensures the zip's top-level folder is exactly
       # "ModuleManager/", matching this module's alias and real install
