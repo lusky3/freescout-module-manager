@@ -4,7 +4,7 @@ Installs FreeScout modules from a GitHub repo or an uploaded ZIP. No telemetry, 
 
 ## How it stays safe
 
-This module makes two kinds of network calls, both to GitHub and both for a repo you added yourself: a GET to `api.github.com/repos/{owner}/{repo}` when you add a repo by pasting its URL (to look up its default branch and name instead of making you type them in), and a GET to `github.com/{owner}/{repo}/archive/{ref}.zip` when you install it. Nothing routes through a server this project doesn't control. Every ZIP, whether it came from GitHub or a direct upload, gets checked for path traversal and a valid `module.json` before a single file is written to disk. MIT licensed.
+This module makes two kinds of network calls, both to GitHub and both for a repo you added yourself: a GET to `api.github.com/repos/{owner}/{repo}` when you add a repo by pasting its URL (to look up its default branch and name instead of making you type them in), and a GET to `github.com/{owner}/{repo}/archive/{ref}.zip` when you install it. Nothing routes through a server this project doesn't control. Every ZIP, whether it came from GitHub or a direct upload, gets checked for path traversal and a valid `module.json` before a single file is written to disk. MIT licensed. One more, different in kind from the rest: FreeScout's own core checks every installed module's `module.json` for update info on every visit to its Modules page, and this module declares that info (pointing at this repo's GitHub Releases) so it shows up there too — that check runs automatically, not on a click, because FreeScout core controls it, not this module's code.
 
 ## Requirements
 
@@ -47,6 +47,13 @@ It returns a list of newly-found, safety-reviewed candidates. Read every one you
 disclaimer, applied by an agent instead of a human, and it can be wrong. For each one you accept: fill
 in `reviewed_at` with today's date, add it to `Resources/catalog.json`, and open a PR the normal way.
 Never merge a catalog update without reading the diff.
+
+## Self-updating
+
+This module can update itself through FreeScout's own Modules page (`/modules/list`), the same way any third-party module can: `module.json` declares `latestVersionUrl` and `latestVersionZipUrl`, and FreeScout core checks and applies updates on its own — this module doesn't write any of that logic. Two things worth knowing:
+
+- The check runs on every load of that page, automatically, with no caching on FreeScout's side. Every other network call this module makes is one you triggered with a click; this is the one exception, and it's FreeScout core's design, not a choice made here.
+- FreeScout core does the actual update download and extraction itself, with no checksum or signature check and no backup of the old version first. That's true for any third-party module using this mechanism — this module can't change how core handles it.
 
 ## Development
 
