@@ -12,6 +12,8 @@ Path traversal or symlink escapes in the ZIP extraction logic. Anything that let
 
 The module catalog on the settings page is static data shipped with this repo (`Resources/catalog.json`) — browsing or adding from it makes no network call beyond the two already listed above. If you find a catalog entry that looks unsafe despite its review notes, that's exactly the kind of thing this policy covers — report it the same way.
 
+This module's own self-update (via `module.json`'s `latestVersionUrl`/`latestVersionZipUrl`) is handled entirely by FreeScout core, not this module's code — a vulnerability in how core downloads or applies that update belongs to FreeScout itself, not this repo. What does belong here: `latestVersionUrl`/`latestVersionZipUrl` pointing anywhere other than `github.com/lusky3/freescout-module-manager`'s own releases, or a release-assets workflow change that could get a mismatched or malicious `version.json`/zip published under this project's name.
+
 Malicious code inside a module you chose to install isn't a vulnerability in this tool. This tool's job is to extract ZIPs safely, not to audit what's inside them — see the README for that distinction.
 
 ## Supported versions
