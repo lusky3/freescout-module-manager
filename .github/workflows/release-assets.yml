@@ -1,0 +1,61 @@
+name: Release Assets
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  TAG_NAME: ${{ github.event.release.tag_name }}
+
+jobs:
+  build-and-upload:
+    name: Build and attach self-update assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the release tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      # Enforces the Global Constraint that module.json's committed
+      # version must match the tag before it's tagged. Fails loudly
+      # instead of silently shipping a self-update zip whose *own*
+      # bundled module.json reports the wrong version to the *next*
+      # update check (exactly the drift that already happened once:
+      # module.json sat at 1.0.0 through the entire v1.1.0 release).
+      - name: Verify module.json's version matches this release
+        run: |
+          set -e
+          tag_version="${TAG_NAME#v}"
+          json_version=$(jq -r .version module.json)
+          if [ "$tag_version" != "$json_version" ]; then
+            echo "::error::module.json version ($json_version) does not match release tag $TAG_NAME (expected $tag_version)."
+            echo "Bump module.json's \"version\" field to $tag_version, commit it, and re-tag before publishing a release."
+            exit 1
+          fi
+
+      - name: Write version.json
+        run: |
+          tag_version="${TAG_NAME#v}"
+          printf '{"version":"%s"}\n' "$tag_version" > version.json
+
+      # --prefix ensures the zip's top-level folder is exactly
+      # "ModuleManager/", matching this module's alias and real install
+      # path (Modules/ModuleManager) -- see this plan's Global
+      # Constraints for why that sidesteps a FreeScout-core special case
+      # that would otherwise apply here. git archive only includes
+      # git-tracked files at this ref, so vendor/, docs/, and everything
+      # else this repo's .gitignore excludes are automatically absent --
+      # identical in shape to what this module's own GithubRepoFetcher
+      # already downloads for every other module it installs.
+      - name: Build the self-update archive
+        run: git archive --format=zip --prefix=ModuleManager/ "$TAG_NAME" -o freescout-module-manager.zip
+
+      - name: Upload release assets
+        run: gh release upload "$TAG_NAME" freescout-module-manager.zip version.json --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
