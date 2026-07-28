@@ -67,6 +67,25 @@ class UpdateChecker
     }
 
     /**
+     * Resolves $ref -- a branch, tag, or commit SHA, whatever the caller is
+     * currently treating as "installed" -- to its current commit SHA.
+     * Deliberately does not ask "is there anything newer" the way
+     * findLatest() does: an install always downloads exactly $ref, so this
+     * answers "what does $ref actually point at right now", independent of
+     * whether a newer release exists elsewhere for a *different* ref. Used
+     * to record what a plain install actually put on disk, rather than
+     * conflating that with findLatest()'s answer and silently drifting the
+     * saved repo onto a ref nobody asked to track.
+     *
+     * @throws GithubDownloadException on any transport failure or other
+     *     non-2xx response from GitHub.
+     */
+    public function resolveCommit(string $owner, string $repo, string $ref): string
+    {
+        return $this->fetchLatestCommit($owner, $repo, $ref)['sha'];
+    }
+
+    /**
      * @return array{tag_name: string, html_url: ?string}|null null when the
      *     repo has never published a release.
      */

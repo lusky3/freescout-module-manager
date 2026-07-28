@@ -152,10 +152,28 @@ class ModuleManagerController extends Controller
             $this->afterSuccessfulInstall($result, $entry->id);
 
             try {
-                $target = $this->updateChecker->findLatest($entry->owner, $entry->repo, $entry->ref);
+                // Deliberately resolves $entry->ref's own current commit
+                // (what was actually just downloaded and extracted), not
+                // findLatest()'s "what's newest" answer -- those are
+                // different questions, and conflating them here previously
+                // caused a plain Install to silently rewrite a tag-tracked
+                // repo's saved ref to whatever release happened to be
+                // latest, and to record a commit-tracked repo's SHA against
+                // the wrong branch (whichever findLatest() preferred, not
+                // $entry->ref). Always recorded as MODE_COMMIT: markUpdated()
+                // in that mode only ever touches installed_commit_sha, never
+                // $entry->ref, so the ref the admin configured is never
+                // touched by an Install click.
+                $installedSha = $this->updateChecker->resolveCommit($entry->owner, $entry->repo, $entry->ref);
+                $target = new UpdateTarget(
+                    UpdateTarget::MODE_COMMIT,
+                    $installedSha,
+                    'commit ' . substr($installedSha, 0, 7) . " on {$entry->ref}",
+                    null
+                );
                 $this->repoStore->markUpdated($entry->id, $target, now()->toIso8601String());
             } catch (GithubDownloadException $e) {
-                // Best-effort: failing to resolve the installed version shouldn't fail
+                // Best-effort: failing to resolve the installed commit shouldn't fail
                 // the install itself. The saved repo will just show "Not checked yet"
                 // until the next explicit "Check for Updates" click.
                 Log::warning('ModuleManager could not resolve installed version after install: ' . $e->getMessage());
@@ -261,15 +279,59 @@ class ModuleManagerController extends Controller
 
     private function afterSuccessfulUpdate(InstallResult $result, SavedRepo $entry, UpdateTarget $target): void
     {
+        // Captured before markInstalled() below overwrites installed_folder
+        // with the new one -- this is the only place that still knows what
+        // folder the previous version lived in.
+        $previousFolder = $entry->installedFolder;
+
         if ($result->folder !== null) {
             $this->repoStore->markInstalled($entry->id, $result->alias, $result->folder);
         }
 
         $this->repoStore->markUpdated($entry->id, $target, now()->toIso8601String());
 
+        // ZipModuleExtractor derives its destination folder from the ZIP's
+        // own top-level folder name ("{repo}-{ref}" for a GitHub archive),
+        // so updating to a different ref extracts into a DIFFERENT folder
+        // than the one already installed rather than overwriting it. Left
+        // alone, the old folder becomes an orphan that FreeScout's own
+        // module scanner -- which keys modules by module.json's "name"
+        // field and lets the last directory glob() happens to return win --
+        // can silently keep loading instead of the new one, while this
+        // module's own UI reports the update as successful. Runs only after
+        // the new folder has already been extracted and the store updated,
+        // so a failure removing the old folder never leaves the admin with
+        // no working module at all.
+        if ($previousFolder !== null && $previousFolder !== $result->folder) {
+            $this->removeOldModuleFolder($previousFolder);
+        }
+
         $this->clearCaches();
 
         Log::info('ModuleManager updated module: ' . $result->alias . ' to ' . $target->ref);
+    }
+
+    /**
+     * Defense in depth: $folder is always a single path segment (the ZIP's
+     * own top-level folder name, which ZipModuleExtractor::
+     * findSingleTopLevelFolder() already guarantees contains no "/"), but
+     * refuse to build a filesystem path from anything that looks like it
+     * could escape Modules/ before ever touching disk.
+     */
+    private function removeOldModuleFolder(string $folder): void
+    {
+        if ($folder === '' || strpos($folder, '/') !== false || strpos($folder, '..') !== false) {
+            Log::warning("ModuleManager refused to remove suspicious old module folder: {$folder}");
+            return;
+        }
+
+        $path = base_path('Modules/' . $folder);
+
+        if (!File::isDirectory($path)) {
+            return;
+        }
+
+        File::deleteDirectory($path);
     }
 
     /**

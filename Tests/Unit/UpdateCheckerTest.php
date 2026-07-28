@@ -226,4 +226,56 @@ class UpdateCheckerTest extends TestCase
         $this->assertMatchesRegularExpression('/^[0-9a-f]{40}$/', $target->ref);
         $this->assertStringContainsString('main', $target->label);
     }
+
+    // ---- resolveCommit(): resolves an exact ref, never "what's newest" ----
+
+    public function test_resolve_commit_returns_the_sha_for_the_given_ref(): void
+    {
+        // Only one response queued: resolveCommit() must go straight to
+        // /commits/{ref} -- it has no business calling /releases/latest or
+        // /branches/{branch} first, since it is answering "what does this
+        // exact ref point at", not "is there something newer".
+        $mock = new MockHandler([
+            new Response(200, [], json_encode([
+                'sha' => 'c19d0da7c782f8786205b1d4d2436a394d3ebef3',
+                'html_url' => 'https://github.com/nielspeen/AiAssistant/commit/c19d0da7c782f8786205b1d4d2436a394d3ebef3',
+            ])),
+        ]);
+        $client = new Client(['handler' => HandlerStack::create($mock)]);
+        $checker = new UpdateChecker($client);
+
+        $sha = $checker->resolveCommit('nielspeen', 'AiAssistant', 'main');
+
+        $this->assertSame('c19d0da7c782f8786205b1d4d2436a394d3ebef3', $sha);
+    }
+
+    public function test_resolve_commit_hits_the_exact_ref_requested(): void
+    {
+        $container = [];
+        $history = \GuzzleHttp\Middleware::history($container);
+        $mock = new MockHandler([
+            new Response(200, [], json_encode(['sha' => str_repeat('a', 40), 'html_url' => null])),
+        ]);
+        $stack = HandlerStack::create($mock);
+        $stack->push($history);
+        $client = new Client(['handler' => $stack]);
+        $checker = new UpdateChecker($client);
+
+        $checker->resolveCommit('octocat', 'Hello-World', 'v1.2.3');
+
+        $this->assertCount(1, $container);
+        $this->assertStringEndsWith('/commits/v1.2.3', (string) $container[0]['request']->getUri());
+    }
+
+    public function test_resolve_commit_throws_on_non_2xx_status(): void
+    {
+        $mock = new MockHandler([new Response(404, [], json_encode(['message' => 'Not Found']))]);
+        $client = new Client(['handler' => HandlerStack::create($mock)]);
+        $checker = new UpdateChecker($client);
+
+        $this->expectException(GithubDownloadException::class);
+        $this->expectExceptionMessage('HTTP 404');
+
+        $checker->resolveCommit('octocat', 'Hello-World', 'does-not-exist');
+    }
 }
