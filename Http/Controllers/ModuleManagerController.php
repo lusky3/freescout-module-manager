@@ -228,6 +228,8 @@ class ModuleManagerController extends Controller
             return redirect()->back()->withErrors(['update' => $e->getMessage()]);
         }
 
+        $target = $this->normalizeTargetForEntry($entry, $target);
+
         $this->repoStore->recordUpdateCheck($entry->id, $target, now()->toIso8601String());
 
         return redirect()->back()->with('success', __('Checked :label for updates.', ['label' => $entry->label]));
@@ -252,6 +254,8 @@ class ModuleManagerController extends Controller
             Log::warning('ModuleManager update check failed: ' . $e->getMessage());
             return redirect()->back()->withErrors(['update' => $e->getMessage()]);
         }
+
+        $target = $this->normalizeTargetForEntry($entry, $target);
 
         $storageDir = $this->ensureStorageDir();
         $zipName = 'update_' . $entry->id . '_' . bin2hex(random_bytes(6)) . '.zip';
@@ -312,6 +316,41 @@ class ModuleManagerController extends Controller
     }
 
     /**
+     * If this entry is tracked by commit (installedCommitSha is set) but
+     * $target came back as a tagged release, resolves the tag to its
+     * commit SHA before returning -- otherwise SavedRepo::
+     * isUpdateAvailable() would compare a raw commit SHA against a tag
+     * *name* and always report "different", even when the tag IS the
+     * commit already installed. This only arises for a repo an admin
+     * manually pinned to a specific ref that also happens to publish
+     * releases (GithubRepoResolver::resolve() and the catalog always yield
+     * a branch, never a tag, so a normally-added repo never reaches this);
+     * without it, such a pin could show a permanent "Update available"
+     * that clicking Update can never clear, since re-downloading the same
+     * tag just re-extracts into the folder that's already there.
+     *
+     * $target->label/url are preserved from the original tag response so
+     * the UI still shows a human-readable tag name and release link --
+     * only $target->mode/$target->ref change, for comparison and download
+     * purposes.
+     */
+    private function normalizeTargetForEntry(SavedRepo $entry, UpdateTarget $target): UpdateTarget
+    {
+        if ($target->mode !== UpdateTarget::MODE_TAG || $entry->installedCommitSha === null) {
+            return $target;
+        }
+
+        try {
+            $sha = $this->updateChecker->resolveCommit($entry->owner, $entry->repo, $target->ref);
+        } catch (GithubDownloadException $e) {
+            Log::warning('ModuleManager could not resolve tag to a commit for comparison: ' . $e->getMessage());
+            return $target;
+        }
+
+        return new UpdateTarget(UpdateTarget::MODE_COMMIT, $sha, $target->label, $target->url);
+    }
+
+    /**
      * Defense in depth: $folder is always a single path segment (the ZIP's
      * own top-level folder name, which ZipModuleExtractor::
      * findSingleTopLevelFolder() already guarantees contains no "/"), but
@@ -327,11 +366,22 @@ class ModuleManagerController extends Controller
 
         $path = base_path('Modules/' . $folder);
 
-        if (!File::isDirectory($path)) {
-            return;
-        }
+        try {
+            if (!File::isDirectory($path)) {
+                return;
+            }
 
-        File::deleteDirectory($path);
+            if (!File::deleteDirectory($path)) {
+                Log::warning("ModuleManager could not remove old module folder: {$path}");
+            }
+        } catch (\Throwable $e) {
+            // Best-effort, same as clearCaches() below: a failure here means
+            // a leftover orphan folder on disk, not a broken update -- the
+            // extraction and store bookkeeping this runs after have already
+            // fully succeeded by this point, so this must never escalate
+            // into a 500 for what the admin already saw reported as success.
+            Log::warning('ModuleManager failed to remove old module folder: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -356,8 +406,30 @@ class ModuleManagerController extends Controller
 
     private function afterSuccessfulInstall(InstallResult $result, ?string $savedRepoId): void
     {
+        // Looked up fresh (rather than threading a SavedRepo through from
+        // the caller) so this stays correct for installFromUpload(), which
+        // has no saved repo at all -- $existing is simply null there, and
+        // no cleanup is attempted, matching the fact that an uploaded ZIP
+        // was never tracked against a previous folder in the first place.
+        $previousFolder = null;
+        if ($savedRepoId !== null) {
+            $existing = $this->repoStore->find($savedRepoId);
+            $previousFolder = $existing !== null ? $existing->installedFolder : null;
+        }
+
         if ($savedRepoId !== null && $result->folder !== null) {
             $this->repoStore->markInstalled($savedRepoId, $result->alias, $result->folder);
+        }
+
+        // Same reasoning as afterSuccessfulUpdate()'s cleanup: without this,
+        // clicking "Install" again for a saved repo whose folder name
+        // depends on $entry->ref (e.g. after an Update already moved it to
+        // a different ref-named folder) re-creates the exact orphaned-
+        // duplicate-folder state Update itself was just fixed to avoid --
+        // this is the plain Install button, always visible, not a one-off
+        // edge case.
+        if ($previousFolder !== null && $previousFolder !== $result->folder) {
+            $this->removeOldModuleFolder($previousFolder);
         }
 
         $this->clearCaches();
