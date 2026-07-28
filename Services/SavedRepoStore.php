@@ -5,6 +5,7 @@ namespace Modules\ModuleManager\Services;
 use Modules\ModuleManager\Services\Support\FileLockable;
 use Modules\ModuleManager\Services\Support\OptionStoreInterface;
 use Modules\ModuleManager\Services\Support\SavedRepo;
+use Modules\ModuleManager\Services\Support\UpdateTarget;
 
 class SavedRepoStore
 {
@@ -103,6 +104,86 @@ class SavedRepoStore
                 if (is_array($entry) && ($entry['id'] ?? null) === $id) {
                     $entry['installed_alias'] = $alias;
                     $entry['installed_folder'] = $folder;
+                    $found = true;
+                    break;
+                }
+            }
+            unset($entry);
+
+            if (!$found) {
+                return false;
+            }
+
+            $this->options->set(self::OPTION_KEY, $entries);
+
+            return true;
+        });
+    }
+
+    /**
+     * Caches the result of an UpdateChecker::findLatest() call against $id,
+     * without touching what's actually installed -- used by the "Check for
+     * Updates" button, which only refreshes the badge shown in the UI.
+     */
+    public function recordUpdateCheck(string $id, UpdateTarget $target, string $checkedAt): bool
+    {
+        return $this->withLock($this->lockFilePath, function () use ($id, $target, $checkedAt) {
+            $entries = $this->allRaw();
+            $found = false;
+
+            foreach ($entries as &$entry) {
+                if (is_array($entry) && ($entry['id'] ?? null) === $id) {
+                    $entry['latest_known_ref'] = $target->ref;
+                    $entry['latest_known_label'] = $target->label;
+                    $entry['latest_known_url'] = $target->url;
+                    $entry['latest_checked_at'] = $checkedAt;
+                    $found = true;
+                    break;
+                }
+            }
+            unset($entry);
+
+            if (!$found) {
+                return false;
+            }
+
+            $this->options->set(self::OPTION_KEY, $entries);
+
+            return true;
+        });
+    }
+
+    /**
+     * Records that $id was just successfully re-installed at $target --
+     * used after a successful "Update" install. Unlike recordUpdateCheck(),
+     * this also updates what's actually installed: in tag mode, 'ref'
+     * becomes the newly-installed tag (the version marker for that mode)
+     * and 'installed_commit_sha' is cleared; in commit mode, 'ref' (the
+     * tracked branch *name*) is left alone and 'installed_commit_sha'
+     * becomes the newly-installed commit. Either way, latest_known_* is
+     * also refreshed to match $target, so SavedRepo::isUpdateAvailable()
+     * immediately reports "up to date" rather than "not checked" right
+     * after the update.
+     */
+    public function markUpdated(string $id, UpdateTarget $target, string $checkedAt): bool
+    {
+        return $this->withLock($this->lockFilePath, function () use ($id, $target, $checkedAt) {
+            $entries = $this->allRaw();
+            $found = false;
+
+            foreach ($entries as &$entry) {
+                if (is_array($entry) && ($entry['id'] ?? null) === $id) {
+                    if ($target->mode === UpdateTarget::MODE_TAG) {
+                        $entry['ref'] = $target->ref;
+                        $entry['installed_commit_sha'] = null;
+                    } else {
+                        $entry['installed_commit_sha'] = $target->ref;
+                    }
+
+                    $entry['latest_known_ref'] = $target->ref;
+                    $entry['latest_known_label'] = $target->label;
+                    $entry['latest_known_url'] = $target->url;
+                    $entry['latest_checked_at'] = $checkedAt;
                     $found = true;
                     break;
                 }

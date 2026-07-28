@@ -114,6 +114,7 @@
                         <th>{{ __('Label') }}</th>
                         <th>{{ __('Repository') }}</th>
                         <th>{{ __('Branch/Tag') }}</th>
+                        <th>{{ __('Updates') }}</th>
                         <th>{{ __('Action') }}</th>
                     </tr>
                 </thead>
@@ -136,10 +137,38 @@
                             <td>{{ $repo->owner }}/{{ $repo->repo }}</td>
                             <td>{{ $repo->ref }}</td>
                             <td>
+                                @php
+                                    $updateAvailable = $repo->isUpdateAvailable();
+                                @endphp
+                                @if ($updateAvailable === true)
+                                    <span class="label label-warning">{{ __('Update available: :label', ['label' => $repo->latestKnownLabel]) }}</span>
+                                    @if ($repo->latestKnownUrl)
+                                        <a href="{{ $repo->latestKnownUrl }}" target="_blank" rel="noopener noreferrer"><small>{{ __('View') }}</small></a>
+                                    @endif
+                                @elseif ($updateAvailable === false)
+                                    <span class="text-muted"><span class="glyphicon glyphicon-ok" aria-hidden="true"></span> {{ __('Up to date') }}</span>
+                                @else
+                                    <span class="text-muted">{{ __('Not checked yet') }}</span>
+                                @endif
+                                @if ($repo->latestCheckedAt)
+                                    <br><small class="text-muted">{{ __('Checked :date', ['date' => date('M j, Y g:ia', strtotime($repo->latestCheckedAt))]) }}</small>
+                                @endif
+                            </td>
+                            <td>
                                 <form method="post" action="{{ route('modulemanager_install_repo', $repo->id) }}" style="display:inline">
                                     {{ csrf_field() }}
                                     <button type="submit" class="btn btn-sm btn-primary">{{ __('Install') }}</button>
                                 </form>
+                                <form method="post" action="{{ route('modulemanager_check_update', $repo->id) }}" style="display:inline; margin-left: 10px;">
+                                    {{ csrf_field() }}
+                                    <button type="submit" class="btn btn-sm btn-default">{{ __('Check for Updates') }}</button>
+                                </form>
+                                @if ($repo->installedFolder && is_dir(base_path('Modules/'.$repo->installedFolder)) && $updateAvailable === true)
+                                    <form method="post" action="{{ route('modulemanager_update_repo', $repo->id) }}" style="display:inline; margin-left: 10px;">
+                                        {{ csrf_field() }}
+                                        <button type="submit" class="btn btn-sm btn-success">{{ __('Update') }}</button>
+                                    </form>
+                                @endif
                                 <form method="post" action="{{ route('modulemanager_remove_repo', $repo->id) }}" style="display:inline; margin-left: 10px;">
                                     {{ csrf_field() }}
                                     {{ method_field('DELETE') }}
@@ -149,7 +178,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="4" class="text-muted">{{ __('No saved repositories yet.') }}</td>
+                            <td colspan="5" class="text-muted">{{ __('No saved repositories yet.') }}</td>
                         </tr>
                     @endforelse
                 </tbody>
