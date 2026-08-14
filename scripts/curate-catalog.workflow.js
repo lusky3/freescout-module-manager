@@ -1,3 +1,8 @@
+/* global agent, args, log, phase, pipeline */
+// The five identifiers above are injected by the Workflow tool's runtime when
+// this script executes (see the Workflow tool's own documentation) -- they
+// are not imported or defined anywhere in this file on purpose.
+
 export const meta = {
   name: 'curate-catalog',
   description: 'Discover FreeScout modules on GitHub and safety-review each candidate for the module catalog',
