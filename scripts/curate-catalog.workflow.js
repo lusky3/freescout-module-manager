@@ -1,3 +1,8 @@
+/* global agent, args, log, phase, pipeline */
+// The five identifiers above are injected by the Workflow tool's runtime when
+// this script executes (see the Workflow tool's own documentation) -- they
+// are not imported or defined anywhere in this file on purpose.
+
 export const meta = {
   name: 'curate-catalog',
   description: 'Discover FreeScout modules on GitHub and safety-review each candidate for the module catalog',
@@ -34,17 +39,83 @@ concrete and specific, not "looks fine". Cite the exact suspicious line if you r
 
 phase('Discover')
 const searchResults = await agent(
-  'Search GitHub for FreeScout Laravel modules using mcp__github-mcp-server__search_repositories ' +
-  'with queries like "freescout module in:name,description" (sort by stars) and "topic:freescout-module". ' +
-  'Also fetch the README of avenjamin/awesome-freescout via mcp__github-mcp-server__get_file_contents and ' +
-  'extract every github.com/owner/repo link it lists. Combine both sources, dedupe by owner/repo (case-' +
-  'insensitive), and drop anything already present in this repo\'s Resources/catalog.json (read that file ' +
-  'first). Return a JSON array of {owner, repo} pairs, nothing else.',
-  { schema: { type: 'object', properties: { candidates: { type: 'array', items: { type: 'object', properties: { owner: { type: 'string' }, repo: { type: 'string' } }, required: ['owner', 'repo'] } } }, required: ['candidates'] } }
+  'Search GitHub as broadly and thoroughly as possible for FreeScout Laravel modules -- use ALL of these ' +
+  'searches, not just one or two, since this pass is specifically meant to be deeper than a single obvious ' +
+  'query: ' +
+  '(1) mcp__github-mcp-server__search_repositories "freescout module in:name,description", sorted by stars; ' +
+  '(2) mcp__github-mcp-server__search_repositories "topic:freescout-module"; ' +
+  '(3) mcp__github-mcp-server__search_repositories "topic:freescout"; ' +
+  '(4) mcp__github-mcp-server__search_repositories "freescout-module in:name" (hyphenated naming convention); ' +
+  '(5) mcp__github-mcp-server__search_repositories "FreescoutModule in:name" and separately "FreeScoutModule in:name" ' +
+  '(CamelCase naming conventions actually used by real modules already in the catalog, e.g. FreescoutDiscordModule); ' +
+  '(6) mcp__github-mcp-server__search_code for `"freescout-help-desk/freescout" filename:composer.json` -- this ' +
+  'finds real dependents of FreeScout core by their own declared composer dependency, catching modules that ' +
+  'do not mention "freescout" anywhere in their name, description, or topics at all. ' +
+  'For every repo found via searches (1)-(6), record owner, repo, stargazers_count, and pushed_at exactly as ' +
+  'returned by the search API -- no extra per-repo lookup needed for these. ' +
+  'Separately, fetch the README of avenjamin/awesome-freescout via mcp__github-mcp-server__get_file_contents ' +
+  'and extract every github.com/owner/repo link it lists; for these, set from_awesome_list true and leave ' +
+  'stars/pushed_at as 0/null if not otherwise known -- do not spend an extra lookup on them here, the Review ' +
+  'phase already fetches full metadata per candidate. ' +
+  'Combine every source, dedupe by owner/repo (case-insensitive), and drop anything already present in this ' +
+  'repo\'s Resources/catalog.json (read that file first). ' +
+  'Return a JSON array of candidates with owner, repo, stars (0 if unknown), pushed_at (null if unknown), and ' +
+  'from_awesome_list (boolean, true only for candidates found via the awesome-freescout README).',
+  {
+    schema: {
+      type: 'object',
+      properties: {
+        candidates: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              owner: { type: 'string' },
+              repo: { type: 'string' },
+              stars: { type: 'number' },
+              pushed_at: { type: ['string', 'null'] },
+              from_awesome_list: { type: 'boolean' },
+            },
+            required: ['owner', 'repo', 'stars', 'from_awesome_list'],
+          },
+        },
+      },
+      required: ['candidates'],
+    },
+  }
 )
 
-const candidates = searchResults.candidates
-log(`${candidates.length} candidate repos found after dedup`)
+const allCandidates = searchResults.candidates
+log(`${allCandidates.length} raw candidates found after dedup across all search strategies`)
+
+// Recency/popularity filter, applied only to candidates found via raw GitHub
+// search -- which can surface a lot of loosely-related, abandoned, or
+// long-dead repos once the search net is widened like this. awesome-freescout
+// entries are kept unconditionally: being on a maintained, curated community
+// list is itself a relevance signal search alone can't provide, and the list
+// is short enough that reviewing every entry on it isn't a meaningful cost.
+const POPULARITY_STAR_THRESHOLD = 20
+const RECENCY_CUTOFF_DAYS = 365
+const MAX_CANDIDATES_TO_REVIEW = 40
+
+const passesFilter = allCandidates.filter((c) => {
+  if (c.from_awesome_list) return true
+  if (c.stars >= POPULARITY_STAR_THRESHOLD) return true
+  if (!c.pushed_at) return false
+  const ageDays = (args.nowMs - new Date(c.pushed_at).getTime()) / (1000 * 60 * 60 * 24)
+  return ageDays <= RECENCY_CUTOFF_DAYS
+})
+
+log(`${passesFilter.length} candidates pass the recency/popularity filter ` +
+  `(dropped ${allCandidates.length - passesFilter.length} stale, low-star, non-awesome-list repos)`)
+
+let candidates = passesFilter
+if (candidates.length > MAX_CANDIDATES_TO_REVIEW) {
+  candidates = [...passesFilter].sort((a, b) => b.stars - a.stars).slice(0, MAX_CANDIDATES_TO_REVIEW)
+  log(`Capped review to the top ${MAX_CANDIDATES_TO_REVIEW} by stars ` +
+    `(dropped ${passesFilter.length - MAX_CANDIDATES_TO_REVIEW} lower-star candidates past the cap -- ` +
+    'a higher MAX_CANDIDATES_TO_REVIEW would review those too)')
+}
 
 phase('Review')
 const reviewed = await pipeline(
