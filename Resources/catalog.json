@@ -362,5 +362,19 @@
         "screenshot_url": null,
         "reviewed_at": "2026-08-14",
         "review_notes": "All outbound calls go to Meta's own Graph API for WhatsApp Business, using an admin-configured access token, which is the module's stated purpose. No obfuscation."
+    },
+    {
+        "owner": "lusky3",
+        "repo": "freescout-quiet-autoclosed",
+        "ref": "main",
+        "name": "Quiet Auto-Closed",
+        "description": "Suppresses the \"new conversation\" notification for tickets an automatic Workflow has already closed.",
+        "author_name": "lusky3",
+        "stars": 0,
+        "last_pushed_at": "2026-09-04T21:53:35Z",
+        "license": "MIT",
+        "screenshot_url": null,
+        "reviewed_at": "2026-09-04",
+        "review_notes": "There are no network calls anywhere in this module; it reads a conversation's closed status from the local database and drops notification recipients through FreeScout's own Eventy hooks. No eval, no obfuscation, no filesystem writes outside its own directory."
     }
 ]
