@@ -11,7 +11,7 @@
         "license": "MIT",
         "screenshot_url": null,
         "reviewed_at": "2026-07-23",
-        "review_notes": "module.json and the main service provider read cleanly; no obfuscation or undisclosed outbound calls found. This free version's module.json links to a paid \"Pro\" upgrade at 5starplugins.com \u2014 that's disclosed here, not hidden in the code."
+        "review_notes": "module.json and the main service provider read cleanly, with no obfuscation or undisclosed outbound calls. This free version's module.json links to a paid \"Pro\" upgrade at 5starplugins.com, which is disclosed here, not hidden in the code."
     },
     {
         "owner": "avenjamin",
@@ -39,7 +39,7 @@
         "license": null,
         "screenshot_url": null,
         "reviewed_at": "2026-07-23",
-        "review_notes": "The only outbound call is a curl POST to the admin-configured Discord webhook_url \u2014 that's the module's stated purpose, not a hidden call. No obfuscation. No license file in the repo at review time."
+        "review_notes": "A curl POST to the admin-configured Discord webhook_url is the only outbound call, matching the module's stated purpose rather than hiding anything. No obfuscation, and no license file was in the repo at review time."
     },
     {
         "owner": "avenjamin",
@@ -67,7 +67,7 @@
         "license": "AGPL-3.0",
         "screenshot_url": null,
         "reviewed_at": "2026-07-28",
-        "review_notes": "Only outbound calls are to ICS/CalDAV URLs an admin enters per calendar, fetched by a scheduled command -- that's the module's stated purpose. No eval, no obfuscation, no undisclosed calls."
+        "review_notes": "A scheduled command fetches ICS/CalDAV URLs an admin enters per calendar, which is exactly the module's stated purpose. No eval, no obfuscation, and no undisclosed calls turned up."
     },
     {
         "owner": "dmemsm",
@@ -81,7 +81,7 @@
         "license": "MIT",
         "screenshot_url": null,
         "reviewed_at": "2026-07-28",
-        "review_notes": "Only outbound call is to OpenAI's chat completions endpoint using an admin-entered per-mailbox API key. No obfuscation, no other network or credential access."
+        "review_notes": "The one outbound call goes to OpenAI's chat completions endpoint, using an admin-entered per-mailbox API key. Nothing else reaches the network, no obfuscation, no other credential access."
     },
     {
         "owner": "aarhus",
@@ -95,7 +95,7 @@
         "license": "AGPL-3.0",
         "screenshot_url": null,
         "reviewed_at": "2026-07-28",
-        "review_notes": "The only outbound call sends a click-gated request to the URL parsed from the email's own List-Unsubscribe header -- inherent to one-click unsubscribe, not a hidden call. Some leftover debug logging, but no exfiltration."
+        "review_notes": "Its one outbound call parses the URL from the email's own List-Unsubscribe header and sends a click-gated request to it, which is inherent to one-click unsubscribe rather than a hidden call. There's some leftover debug logging, but nothing that exfiltrates data."
     },
     {
         "owner": "weDevsOfficial",
@@ -106,10 +106,10 @@
         "author_name": "Tareq Hasan / weDevsOfficial",
         "stars": 8,
         "last_pushed_at": "2023-10-04T10:35:44Z",
-        "license": "MIT (module.json declares AGPL-3.0 -- a metadata mismatch, not a security issue)",
+        "license": "MIT (module.json declares AGPL-3.0, a metadata mismatch, not a security issue)",
         "screenshot_url": null,
         "reviewed_at": "2026-07-28",
-        "review_notes": "Only outbound calls are to Stripe's own API using an admin-entered secret key that's encrypted at rest. No obfuscation, no undisclosed calls."
+        "review_notes": "All outbound calls go to Stripe's own API, authenticated with an admin-entered secret key that's encrypted at rest. No obfuscation turned up, and nothing calls out anywhere undisclosed."
     },
     {
         "owner": "avenjamin",
@@ -137,7 +137,7 @@
         "license": "GPL-3.0",
         "screenshot_url": null,
         "reviewed_at": "2026-07-28",
-        "review_notes": "The only outbound calls are to the SSO/SLO endpoints and certificate an admin configures in the module's own settings section. No obfuscation, no undisclosed calls, no credential exfiltration."
+        "review_notes": "Every outbound call targets the SSO/SLO endpoints and certificate an admin configures in the module's own settings section. No obfuscation, no undisclosed calls, no credential exfiltration."
     },
     {
         "owner": "seven-io",
@@ -151,7 +151,7 @@
         "license": "MIT",
         "screenshot_url": null,
         "reviewed_at": "2026-07-28",
-        "review_notes": "Only outbound call is to seven.io's own SMS API using an admin-entered, encrypted API key -- that's the module's disclosed purpose. No obfuscation, no other network access."
+        "review_notes": "The one outbound call reaches seven.io's own SMS API, using an admin-entered, encrypted API key, which is the module's disclosed purpose. No obfuscation, no other network access."
     },
     {
         "owner": "FreeScout-shop",
@@ -176,10 +176,10 @@
         "author_name": "Wouter0100 (Cloudbear)",
         "stars": 2,
         "last_pushed_at": "2025-06-25T10:09:27Z",
-        "license": "MIT (module.json declares AGPL-3.0 -- a metadata mismatch, not a security issue)",
+        "license": "MIT (module.json declares AGPL-3.0, a metadata mismatch, not a security issue)",
         "screenshot_url": null,
         "reviewed_at": "2026-07-28",
-        "review_notes": "Registers one inbound webhook route that decodes Postal's own base64-wrapped message payload -- that's the module's stated purpose, not obfuscation. No outbound calls, no credential exfiltration."
+        "review_notes": "It registers one inbound webhook route that decodes Postal's own base64-wrapped message payload, which is the module's stated purpose rather than obfuscation. No outbound calls, no credential exfiltration."
     },
     {
         "owner": "fulldecent",
@@ -193,7 +193,7 @@
         "license": "MIT",
         "screenshot_url": null,
         "reviewed_at": "2026-07-28",
-        "review_notes": "Only outbound call is a POST to an admin-configured URL, gated behind an admin-only settings route -- that's the module's stated purpose. No obfuscation, no other network access."
+        "review_notes": "Its only outbound call is a POST to an admin-configured URL, gated behind an admin-only settings route, exactly the module's stated purpose. No obfuscation, no other network access."
     },
     {
         "owner": "calebbaker194",
@@ -221,7 +221,7 @@
         "license": "AGPL-3.0",
         "screenshot_url": null,
         "reviewed_at": "2026-08-14",
-        "review_notes": "Only outbound calls are to Microsoft Graph API endpoints using OAuth credentials an admin configures per mailbox. No obfuscation -- a client-side JWT payload decode of its own access token, not a signature bypass."
+        "review_notes": "All outbound calls go to Microsoft Graph API endpoints, using OAuth credentials an admin configures per mailbox. No obfuscation: what looked odd at first was just a client-side JWT payload decode of its own access token, not a signature bypass."
     },
     {
         "owner": "LJPc-solutions",
@@ -235,7 +235,7 @@
         "license": "AGPL-3.0",
         "screenshot_url": null,
         "reviewed_at": "2026-08-14",
-        "review_notes": "Pure database CRUD for team/mention-based internal conversations via standard FreeScout hooks. No network calls, no obfuscation."
+        "review_notes": "It's plain database CRUD for team/mention-based internal conversations, wired through standard FreeScout hooks. No network calls, no obfuscation."
     },
     {
         "owner": "AdamCoffeeOverflow",
@@ -249,7 +249,7 @@
         "license": "AGPL-3.0",
         "screenshot_url": null,
         "reviewed_at": "2026-08-14",
-        "review_notes": "Pure database search/filtering logic, no external search API calls, no obfuscation."
+        "review_notes": "The search logic is entirely local database filtering; nothing calls out to an external search API, and there's no obfuscation."
     },
     {
         "owner": "AdamCoffeeOverflow",
@@ -263,7 +263,7 @@
         "license": "AGPL-3.0",
         "screenshot_url": null,
         "reviewed_at": "2026-08-14",
-        "review_notes": "Pure CSS/UI logic based on conversation timestamps already in the database. No network calls, no obfuscation."
+        "review_notes": "This is CSS/UI logic driven by conversation timestamps already in the database. No network calls, no obfuscation."
     },
     {
         "owner": "AdamCoffeeOverflow",
@@ -291,7 +291,7 @@
         "license": "GPL-3.0",
         "screenshot_url": null,
         "reviewed_at": "2026-08-14",
-        "review_notes": "Pure scheduling/database logic built on FreeScout's own conversation model. No outbound network calls, no obfuscation."
+        "review_notes": "The scheduling logic sits entirely on top of FreeScout's own conversation model. No outbound network calls, no obfuscation."
     },
     {
         "owner": "rabsym",
@@ -333,7 +333,7 @@
         "license": "AGPL-3.0",
         "screenshot_url": null,
         "reviewed_at": "2026-08-14",
-        "review_notes": "Only outbound calls are to Ameise CRM's own hardcoded test/prod API endpoints, matching the module's stated single-vendor integration purpose -- same pattern as this catalog's Stripe/Twilio entries. No obfuscation; only useful to Ameise CRM customers."
+        "review_notes": "All outbound calls go to Ameise CRM's own hardcoded test/prod API endpoints, matching the module's stated single-vendor integration purpose (the same pattern as this catalog's Stripe/Twilio entries). No obfuscation, though it's only useful to Ameise CRM customers."
     },
     {
         "owner": "AdamCoffeeOverflow",
@@ -347,7 +347,7 @@
         "license": "AGPL-3.0",
         "screenshot_url": null,
         "reviewed_at": "2026-08-14",
-        "review_notes": "Pure assignment logic over FreeScout's own conversation/user models. No network calls, no obfuscation."
+        "review_notes": "It's assignment logic layered over FreeScout's own conversation/user models, nothing more. No network calls, no obfuscation."
     },
     {
         "owner": "losimo",
@@ -361,6 +361,6 @@
         "license": "AGPL-3.0",
         "screenshot_url": null,
         "reviewed_at": "2026-08-14",
-        "review_notes": "Only outbound calls are to Meta's own Graph API for WhatsApp Business, using an admin-configured access token -- the module's stated purpose. No obfuscation."
+        "review_notes": "All outbound calls go to Meta's own Graph API for WhatsApp Business, using an admin-configured access token, which is the module's stated purpose. No obfuscation."
     }
 ]
