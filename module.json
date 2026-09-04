@@ -6,6 +6,8 @@
     "license": "MIT",
     "author": "FreeScout Module Manager contributors",
     "authorUrl": "https://github.com/lusky3/freescout-module-manager",
+    "detailsUrl": "https://github.com/lusky3/freescout-module-manager/releases",
+    "img": "/modules/modulemanager/img/icon.svg",
     "latestVersionUrl": "https://github.com/lusky3/freescout-module-manager/releases/latest/download/version.json",
     "latestVersionZipUrl": "https://github.com/lusky3/freescout-module-manager/releases/latest/download/freescout-module-manager.zip",
     "providers": [
