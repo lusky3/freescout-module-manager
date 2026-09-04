@@ -2,7 +2,7 @@
     "name": "FreeScout Module Manager",
     "alias": "modulemanager",
     "description": "Install FreeScout modules from a GitHub repository or an uploaded ZIP file.",
-    "version": "1.3.1",
+    "version": "1.3.2",
     "license": "MIT",
     "author": "FreeScout Module Manager contributors",
     "authorUrl": "https://github.com/lusky3/freescout-module-manager",

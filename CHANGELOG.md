@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.2] - 2026-09-04
+
+### Fixed
+
+- Added a real icon for the Modules page, served from this module's own
+  `Public/` directory. Without it, `module.json` had no `img` field and
+  FreeScout core fell back to a generic default icon.
+- Fixed the "View details" link on the Modules page and the "new version
+  available" banner. Without a `detailsUrl` in `module.json`, that link
+  rendered as a relative `?changelog=1` href, which just reopened the
+  current page instead of going anywhere. It now points to this repo's
+  GitHub Releases page.
+
 ## [1.3.1] - 2026-09-04
 
 ### Security
