@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.3] - 2026-09-05
+
+### Added
+
+- Added `lusky3/freescout-quiet-autoclosed` to the module catalog (27
+  entries now): suppresses the "new conversation" notification for tickets
+  an automatic Workflow has already closed.
+
+### Changed
+
+- Tightened prose in README.md, SECURITY.md, and the catalog's review
+  notes for clarity; no functional changes.
+
 ## [1.3.2] - 2026-09-04
 
 ### Fixed
