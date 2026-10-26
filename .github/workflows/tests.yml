@@ -11,7 +11,7 @@ permissions:
 jobs:
   unit-tests:
     name: Unit tests (PHP ${{ matrix.php-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
